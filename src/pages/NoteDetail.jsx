@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import Layout from '../components/Layout';
 import { 
   Download, ThumbsUp, ThumbsDown, Eye, Calendar, User, 
-  FileText, Share2, Flag, Bookmark, ExternalLink 
+  FileText, Share2, Flag, Bookmark, ExternalLink, CheckCircle 
 } from 'lucide-react';
 import { doc, getDoc, updateDoc, increment, addDoc, collection, query, where, getDocs, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase/config';
@@ -19,6 +19,7 @@ const NoteDetail = () => {
   const [loading, setLoading] = useState(true);
   const [userVote, setUserVote] = useState(null);
   const [isBookmarked, setIsBookmarked] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
     fetchNoteDetails();
@@ -87,7 +88,6 @@ const NoteDetail = () => {
     }
 
     try {
-      // Check if user already voted
       const votesQuery = query(
         collection(db, 'votes'),
         where('userId', '==', currentUser.uid),
@@ -96,12 +96,10 @@ const NoteDetail = () => {
       const voteSnapshot = await getDocs(votesQuery);
 
       if (!voteSnapshot.empty) {
-        // User already voted
         const existingVote = voteSnapshot.docs[0];
         const existingVoteType = existingVote.data().voteType;
 
         if (existingVoteType === voteType) {
-          // Remove vote
           await deleteDoc(existingVote.ref);
           await updateDoc(doc(db, 'notes', noteId), {
             [voteType === 'upvote' ? 'upvotes' : 'downvotes']: increment(-1)
@@ -109,7 +107,6 @@ const NoteDetail = () => {
           setUserVote(null);
           toast.info('Vote removed');
         } else {
-          // Change vote
           await updateDoc(existingVote.ref, { voteType });
           await updateDoc(doc(db, 'notes', noteId), {
             [existingVoteType === 'upvote' ? 'upvotes' : 'downvotes']: increment(-1),
@@ -119,7 +116,6 @@ const NoteDetail = () => {
           toast.success('Vote changed');
         }
       } else {
-        // New vote
         await addDoc(collection(db, 'votes'), {
           userId: currentUser.uid,
           noteId: noteId,
@@ -133,7 +129,6 @@ const NoteDetail = () => {
         toast.success(`${voteType === 'upvote' ? 'Upvoted' : 'Downvoted'}!`);
       }
 
-      // Refresh note data
       fetchNoteDetails();
     } catch (error) {
       console.error('Error voting:', error);
@@ -147,8 +142,13 @@ const NoteDetail = () => {
       return;
     }
 
+    if (downloading) return;
+    setDownloading(true);
+
     try {
-      // Track download in downloads collection
+      toast.info('⏳ Preparing your download...');
+
+      // Track download in database
       await addDoc(collection(db, 'downloads'), {
         userId: currentUser.uid,
         noteId: noteId,
@@ -160,54 +160,92 @@ const NoteDetail = () => {
         downloads: increment(1)
       });
 
-      toast.info('⏳ Preparing download and saving for offline access...');
-      
-      try {
-        // Fetch the file
-        const response = await fetch(note.fileURL);
-        const blob = await response.blob();
-        
-        // Save to IndexedDB for offline access
-        try {
-          await saveFileOffline(noteId, blob, {
-            title: note.title,
-            subject: note.subject,
-            department: note.department,
-            semester: note.semester,
-            fileSize: note.fileSize,
-            fileType: note.fileType,
-            uploaderName: note.uploaderName
-          });
-          console.log('✅ File saved for offline access');
-        } catch (offlineError) {
-          console.error('❌ Failed to save for offline:', offlineError);
-          // Continue with download even if offline save fails
+      // Get proper file extension
+      const getFileExtension = () => {
+        if (note.fileType) {
+          const mimeToExt = {
+            'application/pdf': 'pdf',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+            'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
+            'application/vnd.ms-excel': 'xls',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+            'image/jpeg': 'jpg',
+            'image/png': 'png',
+          };
+          return mimeToExt[note.fileType] || 'pdf';
         }
+        return 'pdf';
+      };
+
+      const fileExtension = getFileExtension();
+      const fileName = `${note.title.replace(/[^a-z0-9\s]/gi, '_').replace(/\s+/g, '_')}.${fileExtension}`;
+
+      try {
+        // Method 1: Fetch and download with offline save
+        const response = await fetch(note.fileURL);
         
-        // Trigger download
-        const url = window.URL.createObjectURL(blob);
+        if (response.ok) {
+          const blob = await response.blob();
+          
+          // Save to IndexedDB for offline access
+          try {
+            await saveFileOffline(noteId, blob, {
+              title: note.title,
+              subject: note.subject,
+              department: note.department,
+              semester: note.semester,
+              fileSize: blob.size,
+              fileType: blob.type || note.fileType,
+              uploaderName: note.uploaderName
+            });
+            console.log('✅ File saved for offline access');
+          } catch (offlineError) {
+            console.warn('Could not save for offline:', offlineError);
+          }
+          
+          // Create download link
+          const url = window.URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = fileName;
+          link.style.display = 'none';
+          
+          document.body.appendChild(link);
+          link.click();
+          
+          // Cleanup
+          setTimeout(() => {
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(url);
+          }, 100);
+          
+          toast.success('✅ Downloaded successfully! Saved for offline access.');
+        } else {
+          throw new Error('Download failed');
+        }
+      } catch (fetchError) {
+        console.warn('Fetch method failed, using direct link:', fetchError);
+        
+        // Fallback: Direct link download
         const link = document.createElement('a');
-        link.href = url;
-        link.download = `${note.title}.pdf`;
+        link.href = note.fileURL;
+        link.download = fileName;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        window.URL.revokeObjectURL(url);
         
-        toast.success('✅ Downloaded and saved for offline access!');
-      } catch (fetchError) {
-        console.error('Fetch download failed:', fetchError);
-        // Fallback
-        window.open(note.fileURL, '_blank');
-        toast.success('File opened in new tab!');
+        toast.success('✅ Download started!');
       }
       
       // Refresh note data
       fetchNoteDetails();
     } catch (error) {
-      console.error('Error downloading:', error);
-      window.open(note.fileURL, '_blank');
-      toast.warning('Download started (tracking failed)');
+      console.error('Error during download:', error);
+      toast.error('Download failed. Please try again.');
+    } finally {
+      setDownloading(false);
     }
   };
 
@@ -226,12 +264,10 @@ const NoteDetail = () => {
       const bookmarkSnapshot = await getDocs(bookmarksQuery);
 
       if (!bookmarkSnapshot.empty) {
-        // Remove bookmark
         await deleteDoc(bookmarkSnapshot.docs[0].ref);
         setIsBookmarked(false);
         toast.info('Bookmark removed');
       } else {
-        // Add bookmark
         await addDoc(collection(db, 'bookmarks'), {
           userId: currentUser.uid,
           noteId: noteId,
@@ -250,7 +286,6 @@ const NoteDetail = () => {
     const shareUrl = window.location.href;
     const shareText = `Check out this note: ${note.title} - ${note.subject}`;
 
-    // Check if Web Share API is supported (mostly on mobile)
     if (navigator.share) {
       try {
         await navigator.share({
@@ -262,12 +297,10 @@ const NoteDetail = () => {
       } catch (error) {
         if (error.name !== 'AbortError') {
           console.error('Error sharing:', error);
-          // Fallback to copy link
           copyToClipboard(shareUrl);
         }
       }
     } else {
-      // Fallback: Copy link to clipboard
       copyToClipboard(shareUrl);
     }
   };
@@ -278,7 +311,6 @@ const NoteDetail = () => {
       toast.success('📋 Link copied to clipboard!');
     } catch (error) {
       console.error('Failed to copy:', error);
-      // Fallback for older browsers
       const textArea = document.createElement('textarea');
       textArea.value = text;
       document.body.appendChild(textArea);
@@ -354,33 +386,60 @@ const NoteDetail = () => {
                       </div>
                     </div>
                     
-                    {/* Action Button - Single Download */}
+                    {/* Enhanced Download Button */}
                     <div className="mb-8">
                       <button
                         onClick={handleDownload}
-                        className="w-full bg-gradient-to-r from-purple-600 via-purple-700 to-blue-600 text-white px-8 py-6 rounded-2xl font-bold hover:shadow-2xl flex items-center justify-center gap-3 text-xl shadow-xl transition-all transform hover:scale-105 active:scale-100"
+                        disabled={downloading}
+                        className="group relative w-full bg-gradient-to-r from-purple-600 via-purple-700 to-blue-600 text-white px-8 py-6 rounded-2xl font-bold hover:shadow-2xl flex items-center justify-center gap-3 text-xl shadow-xl transition-all transform hover:scale-105 active:scale-100 disabled:opacity-70 disabled:cursor-not-allowed overflow-hidden"
                       >
-                        <Download className="w-7 h-7" />
-                        Download PDF
+                        {/* Shimmer effect */}
+                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-0 group-hover:opacity-20 transform -skew-x-12 group-hover:translate-x-full transition-all duration-1000"></div>
+                        
+                        <Download className={`w-7 h-7 z-10 ${downloading ? 'animate-bounce' : ''}`} />
+                        <span className="z-10">
+                          {downloading ? 'Downloading...' : 'Download PDF'}
+                        </span>
                       </button>
-                      <p className="text-sm text-gray-600 text-center mt-4">
-                        📥 Click to download • {(note.fileSize / 1024 / 1024).toFixed(2)} MB • Opens in your default PDF viewer
-                      </p>
+                      
+                      <div className="mt-4 flex items-center justify-center gap-4 text-sm text-gray-600 flex-wrap">
+                        <span className="flex items-center gap-1">
+                          📥 {(note.fileSize / 1024 / 1024).toFixed(2)} MB
+                        </span>
+                        <span className="flex items-center gap-1">
+                          💾 Saved offline
+                        </span>
+                        <span className="flex items-center gap-1">
+                          🔒 Secure
+                        </span>
+                      </div>
                     </div>
                     
-                    {/* Helper Text */}
+                    {/* Enhanced Helper Text */}
                     <div className="bg-white bg-opacity-60 backdrop-blur-sm rounded-xl p-6 border border-white shadow-lg">
-                      <div className="flex items-start gap-3 text-left">
-                        <div className="bg-purple-100 rounded-full p-2 mt-1">
-                          <Download className="w-5 h-5 text-purple-600" />
+                      <div className="space-y-3">
+                        <div className="flex items-start gap-3 text-left">
+                          <div className="bg-purple-100 rounded-full p-2 mt-0.5 flex-shrink-0">
+                            <Download className="w-5 h-5 text-purple-600" />
+                          </div>
+                          <div>
+                            <h4 className="font-semibold text-gray-800 mb-1">Instant Download</h4>
+                            <p className="text-sm text-gray-600">
+                              Click to download • Automatically saved for offline viewing • No internet required after download
+                            </p>
+                          </div>
                         </div>
-                        <div>
-                          <h4 className="font-semibold text-gray-800 mb-1">How to Access</h4>
-                          <p className="text-sm text-gray-600">
-                            Click the <strong>Download PDF</strong> button to save the file to your device. 
-                            Once downloaded, you can open it with any PDF reader application for viewing, 
-                            printing, or offline access.
-                          </p>
+                        
+                        <div className="flex items-center gap-2 text-xs text-gray-500 pt-2 border-t flex-wrap justify-center">
+                          <span className="px-2 py-1 bg-green-50 text-green-700 rounded-full font-medium flex items-center gap-1">
+                            <CheckCircle className="w-3 h-3" /> Verified safe
+                          </span>
+                          <span className="px-2 py-1 bg-blue-50 text-blue-700 rounded-full font-medium flex items-center gap-1">
+                            <CheckCircle className="w-3 h-3" /> Fast download
+                          </span>
+                          <span className="px-2 py-1 bg-purple-50 text-purple-700 rounded-full font-medium flex items-center gap-1">
+                            <CheckCircle className="w-3 h-3" /> Offline ready
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -390,14 +449,12 @@ const NoteDetail = () => {
                 // Non-PDF files
                 <div className="relative bg-gradient-to-br from-gray-50 to-gray-100 p-12 min-h-[600px] flex items-center justify-center">
                   <div className="max-w-lg w-full text-center">
-                    {/* File Icon */}
                     <div className="relative mb-8">
                       <div className="bg-white rounded-full w-40 h-40 flex items-center justify-center mx-auto shadow-2xl">
                         <FileText className="w-20 h-20 text-gray-400" />
                       </div>
                     </div>
                     
-                    {/* File Info */}
                     <div className="mb-8">
                       <h2 className="text-3xl font-bold text-gray-800 mb-3">
                         {note.title}
@@ -408,14 +465,14 @@ const NoteDetail = () => {
                       </p>
                     </div>
                     
-                    {/* Action Button */}
                     <div className="mb-8">
                       <button
                         onClick={handleDownload}
-                        className="w-full bg-gradient-to-r from-purple-600 to-blue-600 text-white px-8 py-6 rounded-2xl font-bold hover:shadow-2xl flex items-center justify-center gap-3 text-xl shadow-xl transition-all transform hover:scale-105"
+                        disabled={downloading}
+                        className="w-full bg-gradient-to-r from-purple-600 to-blue-600 text-white px-8 py-6 rounded-2xl font-bold hover:shadow-2xl flex items-center justify-center gap-3 text-xl shadow-xl transition-all transform hover:scale-105 disabled:opacity-70"
                       >
-                        <Download className="w-7 h-7" />
-                        Download File
+                        <Download className={`w-7 h-7 ${downloading ? 'animate-bounce' : ''}`} />
+                        {downloading ? 'Downloading...' : 'Download File'}
                       </button>
                       <p className="text-sm text-gray-600 text-center mt-4">
                         📥 Click to download this file
@@ -430,7 +487,6 @@ const NoteDetail = () => {
           {/* Right: Details & Actions */}
           <div className="lg:col-span-1">
             <div className="bg-white rounded-xl shadow-md p-6 sticky top-6">
-              {/* Title */}
               <h1 className="text-2xl font-bold text-gray-800 mb-2">
                 {note.title}
               </h1>

@@ -12,14 +12,21 @@ export const uploadToCloudinary = async (file) => {
   formData.append('file', file);
   formData.append('upload_preset', cloudinaryConfig.uploadPreset);
 
-  // Determine the correct endpoint based on file type
+  // Determine resource type based on file type
   const isPDF = file.type === 'application/pdf';
-  const resourceType = isPDF ? 'raw' : 'auto';
+  const isDocument = file.type.includes('document') || 
+                     file.type.includes('presentation') ||
+                     file.type.includes('msword') ||
+                     file.type.includes('ms-excel');
+  
+  // PDFs and documents should use 'raw' resource type
+  const resourceType = (isPDF || isDocument) ? 'raw' : 'auto';
 
   try {
     const uploadUrl = `https://api.cloudinary.com/v1_1/${cloudinaryConfig.cloudName}/${resourceType}/upload`;
     
     console.log('Upload URL:', uploadUrl);
+    console.log('Resource Type:', resourceType);
     
     const response = await fetch(uploadUrl, {
       method: 'POST',
