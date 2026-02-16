@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import Layout from '../components/Layout';
 import { 
   Download, ThumbsUp, ThumbsDown, Eye, Calendar, User, 
-  FileText, Share2, Flag, Bookmark, ExternalLink, CheckCircle 
+  FileText, Share2, Flag, Bookmark, ExternalLink, CheckCircle, X, Maximize2 
 } from 'lucide-react';
 import { doc, getDoc, updateDoc, increment, addDoc, collection, query, where, getDocs, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase/config';
@@ -20,6 +20,7 @@ const NoteDetail = () => {
   const [userVote, setUserVote] = useState(null);
   const [isBookmarked, setIsBookmarked] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
 
   useEffect(() => {
     fetchNoteDetails();
@@ -35,7 +36,6 @@ const NoteDetail = () => {
       if (noteDoc.exists()) {
         setNote({ id: noteDoc.id, ...noteDoc.data() });
         
-        // Increment view count
         await updateDoc(doc(db, 'notes', noteId), {
           views: increment(1)
         });
@@ -136,6 +136,14 @@ const NoteDetail = () => {
     }
   };
 
+  const handlePreview = () => {
+    if (!currentUser) {
+      toast.error('Please login to preview');
+      return;
+    }
+    setShowPreview(true);
+  };
+
   const handleDownload = async () => {
     if (!currentUser) {
       toast.error('Please login to download');
@@ -148,19 +156,16 @@ const NoteDetail = () => {
     try {
       toast.info('⏳ Preparing your download...');
 
-      // Track download in database
       await addDoc(collection(db, 'downloads'), {
         userId: currentUser.uid,
         noteId: noteId,
         downloadedAt: serverTimestamp()
       });
 
-      // Increment download count
       await updateDoc(doc(db, 'notes', noteId), {
         downloads: increment(1)
       });
 
-      // Get proper file extension
       const getFileExtension = () => {
         if (note.fileType) {
           const mimeToExt = {
@@ -181,13 +186,11 @@ const NoteDetail = () => {
       const fileName = `${note.title.replace(/[^a-z0-9\s]/gi, '_').replace(/\s+/g, '_')}.${fileExtension}`;
 
       try {
-        // Method 1: Fetch and download with offline save
         const response = await fetch(note.fileURL);
         
         if (response.ok) {
           const blob = await response.blob();
           
-          // Save to IndexedDB for offline access
           try {
             await saveFileOffline(noteId, blob, {
               title: note.title,
@@ -203,7 +206,6 @@ const NoteDetail = () => {
             console.warn('Could not save for offline:', offlineError);
           }
           
-          // Create download link
           const url = window.URL.createObjectURL(blob);
           const link = document.createElement('a');
           link.href = url;
@@ -213,7 +215,6 @@ const NoteDetail = () => {
           document.body.appendChild(link);
           link.click();
           
-          // Cleanup
           setTimeout(() => {
             document.body.removeChild(link);
             window.URL.revokeObjectURL(url);
@@ -226,7 +227,6 @@ const NoteDetail = () => {
       } catch (fetchError) {
         console.warn('Fetch method failed, using direct link:', fetchError);
         
-        // Fallback: Direct link download
         const link = document.createElement('a');
         link.href = note.fileURL;
         link.download = fileName;
@@ -239,7 +239,6 @@ const NoteDetail = () => {
         toast.success('✅ Download started!');
       }
       
-      // Refresh note data
       fetchNoteDetails();
     } catch (error) {
       console.error('Error during download:', error);
@@ -386,16 +385,25 @@ const NoteDetail = () => {
                       </div>
                     </div>
                     
-                    {/* Enhanced Download Button */}
-                    <div className="mb-8">
+                    {/* Action Buttons - Preview & Download */}
+                    <div className="mb-8 space-y-3">
+                      {/* Preview Button */}
+                      <button
+                        onClick={handlePreview}
+                        className="group relative w-full bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-600 text-white px-8 py-6 rounded-2xl font-bold hover:shadow-2xl flex items-center justify-center gap-3 text-xl shadow-xl transition-all transform hover:scale-105 active:scale-100 overflow-hidden"
+                      >
+                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-0 group-hover:opacity-20 transform -skew-x-12 group-hover:translate-x-full transition-all duration-1000"></div>
+                        <Eye className="w-7 h-7 z-10" />
+                        <span className="z-10">Preview PDF</span>
+                      </button>
+
+                      {/* Download Button */}
                       <button
                         onClick={handleDownload}
                         disabled={downloading}
                         className="group relative w-full bg-gradient-to-r from-purple-600 via-purple-700 to-blue-600 text-white px-8 py-6 rounded-2xl font-bold hover:shadow-2xl flex items-center justify-center gap-3 text-xl shadow-xl transition-all transform hover:scale-105 active:scale-100 disabled:opacity-70 disabled:cursor-not-allowed overflow-hidden"
                       >
-                        {/* Shimmer effect */}
                         <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-0 group-hover:opacity-20 transform -skew-x-12 group-hover:translate-x-full transition-all duration-1000"></div>
-                        
                         <Download className={`w-7 h-7 z-10 ${downloading ? 'animate-bounce' : ''}`} />
                         <span className="z-10">
                           {downloading ? 'Downloading...' : 'Download PDF'}
@@ -415,17 +423,17 @@ const NoteDetail = () => {
                       </div>
                     </div>
                     
-                    {/* Enhanced Helper Text */}
+                    {/* Helper Text */}
                     <div className="bg-white bg-opacity-60 backdrop-blur-sm rounded-xl p-6 border border-white shadow-lg">
                       <div className="space-y-3">
                         <div className="flex items-start gap-3 text-left">
-                          <div className="bg-purple-100 rounded-full p-2 mt-0.5 flex-shrink-0">
-                            <Download className="w-5 h-5 text-purple-600" />
+                          <div className="bg-blue-100 rounded-full p-2 mt-0.5 flex-shrink-0">
+                            <Eye className="w-5 h-5 text-blue-600" />
                           </div>
                           <div>
-                            <h4 className="font-semibold text-gray-800 mb-1">Instant Download</h4>
+                            <h4 className="font-semibold text-gray-800 mb-1">Preview Before Download</h4>
                             <p className="text-sm text-gray-600">
-                              Click to download • Automatically saved for offline viewing • No internet required after download
+                              Click "Preview PDF" to view the document in your browser, or "Download PDF" to save it to your device for offline access
                             </p>
                           </div>
                         </div>
@@ -435,7 +443,7 @@ const NoteDetail = () => {
                             <CheckCircle className="w-3 h-3" /> Verified safe
                           </span>
                           <span className="px-2 py-1 bg-blue-50 text-blue-700 rounded-full font-medium flex items-center gap-1">
-                            <CheckCircle className="w-3 h-3" /> Fast download
+                            <CheckCircle className="w-3 h-3" /> Fast preview
                           </span>
                           <span className="px-2 py-1 bg-purple-50 text-purple-700 rounded-full font-medium flex items-center gap-1">
                             <CheckCircle className="w-3 h-3" /> Offline ready
@@ -615,6 +623,62 @@ const NoteDetail = () => {
           </div>
         </div>
       </div>
+
+      {/* Preview Modal */}
+      {showPreview && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl w-full max-w-6xl h-[90vh] flex flex-col shadow-2xl">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-4 border-b bg-gradient-to-r from-purple-600 to-blue-600">
+              <div className="flex items-center gap-3">
+                <FileText className="w-6 h-6 text-white" />
+                <div>
+                  <h3 className="text-lg font-bold text-white">{note.title}</h3>
+                  <p className="text-sm text-white text-opacity-90">{note.subject}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowPreview(false)}
+                className="p-2 hover:bg-white hover:bg-opacity-20 rounded-lg transition-colors"
+              >
+                <X className="w-6 h-6 text-white" />
+              </button>
+            </div>
+
+            {/* PDF Viewer */}
+            <div className="flex-1 overflow-hidden">
+              <iframe
+                src={note.fileURL}
+                className="w-full h-full"
+                title={note.title}
+              />
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t bg-gray-50 flex items-center justify-between">
+              <div className="text-sm text-gray-600">
+                <span className="font-medium">{(note.fileSize / 1024 / 1024).toFixed(2)} MB</span> • PDF Document
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowPreview(false)}
+                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium transition-colors"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={handleDownload}
+                  disabled={downloading}
+                  className="px-6 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg hover:shadow-lg font-medium transition-all flex items-center gap-2 disabled:opacity-70"
+                >
+                  <Download className="w-4 h-4" />
+                  {downloading ? 'Downloading...' : 'Download'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 };

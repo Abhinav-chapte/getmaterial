@@ -76,7 +76,7 @@ const AuthPage = () => {
             </div>
             <div>
               <h1 className="text-5xl font-bold flex items-center gap-2">
-                GetMaterial <Rocket className="w-10 h-10" />
+                Get Notes <Rocket className="w-10 h-10" />
               </h1>
               <p className="text-purple-100 text-sm mt-1">
                 Guru Nanak Dev Engineering College Bidar
@@ -122,7 +122,7 @@ const AuthPage = () => {
               {isSignUp ? 'Create Account' : 'Welcome Back'}
             </h2>
             <p className="text-gray-600 mt-2">
-              {isSignUp ? 'Join GetMaterial today' : 'Sign in to continue'}
+              {isSignUp ? 'Join Get Notes today' : 'Sign in to continue'}
             </p>
           </div>
 

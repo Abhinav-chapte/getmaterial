@@ -63,7 +63,7 @@ const Layout = ({ children }) => {
                 </div>
                 <div>
                   <h1 className="text-xl font-bold text-gray-800 flex items-center gap-1">
-                    GetMaterial <Rocket className="w-5 h-5 text-purple-600" />
+                    Get Notes <Rocket className="w-5 h-5 text-purple-600" />
                   </h1>
                   <p className="text-xs text-gray-500">GNDEC Bidar</p>
                 </div>
