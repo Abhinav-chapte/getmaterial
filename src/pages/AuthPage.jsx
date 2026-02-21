@@ -22,7 +22,8 @@ const AuthPage = () => {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
-    collegeUSN: '',
+    collegeUSN: '', // For students
+    collegeID: '', // For professors
     department: '',
     year: '',
     password: '',
@@ -34,7 +35,14 @@ const AuthPage = () => {
   ];
 
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    
+    // Special handling for USN - auto-capitalize
+    if (name === 'collegeUSN') {
+      setFormData({ ...formData, [name]: value.toUpperCase() });
+    } else {
+      setFormData({ ...formData, [name]: value });
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -56,14 +64,91 @@ const AuthPage = () => {
           return;
         }
 
-        await signup(formData.email, formData.password, {
+        // Email validation - check if it looks like a real email
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(formData.email)) {
+          toast.error('Please enter a valid email address');
+          setLoading(false);
+          return;
+        }
+
+        // Warn if using non-Gmail email (optional)
+        if (!formData.email.endsWith('@gmail.com') && !formData.email.endsWith('@gndec.ac.in')) {
+          const proceed = window.confirm(
+            'You are using a non-Gmail/non-college email. We recommend using Gmail for better reliability. Continue anyway?'
+          );
+          if (!proceed) {
+            setLoading(false);
+            return;
+          }
+        }
+
+        // Student-specific validation
+        if (role === 'student') {
+          // Validate USN starts with 3GN
+          if (!formData.collegeUSN.startsWith('3GN')) {
+            toast.error('Invalid USN! Student USN must start with "3GN" (GNDEC Bidar college code)');
+            setLoading(false);
+            return;
+          }
+
+          // Validate USN length (typically 10 characters: 3GN21IS001)
+          if (formData.collegeUSN.length !== 10) {
+            toast.error('Invalid USN format! USN should be 10 characters (e.g., 3GN21IS001)');
+            setLoading(false);
+            return;
+          }
+
+          // Validate year is selected
+          if (!formData.year) {
+            toast.error('Please select your year');
+            setLoading(false);
+            return;
+          }
+        }
+
+        // Professor-specific validation
+        if (role === 'professor') {
+          // Validate College ID is provided
+          if (!formData.collegeID || formData.collegeID.trim().length === 0) {
+            toast.error('Please enter your College ID');
+            setLoading(false);
+            return;
+          }
+
+          // Validate College ID format (at least 4 characters)
+          if (formData.collegeID.trim().length < 4) {
+            toast.error('College ID must be at least 4 characters');
+            setLoading(false);
+            return;
+          }
+        }
+
+        // Validate department is selected
+        if (!formData.department) {
+          toast.error('Please select your department');
+          setLoading(false);
+          return;
+        }
+
+        // Prepare user data based on role
+        const userData = {
           name: formData.name,
-          collegeUSN: formData.collegeUSN,
           department: formData.department,
-          year: formData.year,
           role: role
-        });
-        toast.success('Account created successfully!');
+        };
+
+        // Add role-specific fields
+        if (role === 'student') {
+          userData.collegeUSN = formData.collegeUSN;
+          userData.year = formData.year;
+        } else {
+          userData.collegeID = formData.collegeID;
+          userData.year = 'N/A'; // Professors don't have year
+        }
+
+        await signup(formData.email, formData.password, userData);
+        toast.success('Account created successfully! Please verify your email.');
       } else {
         await signin(formData.email, formData.password);
         toast.success('Welcome back!');
@@ -71,7 +156,23 @@ const AuthPage = () => {
       navigate('/dashboard');
     } catch (error) {
       console.error('Auth error:', error);
-      toast.error(error.message || 'Authentication failed');
+      
+      // Handle specific Firebase errors
+      if (error.code === 'auth/email-already-in-use') {
+        toast.error('This email is already registered. Please login instead.');
+      } else if (error.code === 'auth/invalid-email') {
+        toast.error('Invalid email address format');
+      } else if (error.code === 'auth/weak-password') {
+        toast.error('Password is too weak. Use at least 6 characters.');
+      } else if (error.code === 'auth/user-not-found') {
+        toast.error('No account found with this email. Please sign up first.');
+      } else if (error.code === 'auth/wrong-password') {
+        toast.error('Incorrect password. Please try again.');
+      } else if (error.code === 'auth/too-many-requests') {
+        toast.error('Too many failed attempts. Please try again later.');
+      } else {
+        toast.error(error.message || 'Authentication failed. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -363,20 +464,25 @@ const AuthPage = () => {
                   <>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        College USN
+                        {role === 'student' ? 'College USN' : 'College ID'}
                       </label>
                       <div className="relative">
                         <Hash className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
                         <input
                           type="text"
-                          name="collegeUSN"
-                          value={formData.collegeUSN}
+                          name={role === 'student' ? 'collegeUSN' : 'collegeID'}
+                          value={role === 'student' ? formData.collegeUSN : formData.collegeID}
                           onChange={handleChange}
-                          className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                          placeholder="3GN21IS001"
+                          className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent uppercase"
+                          placeholder={role === 'student' ? '3GN21IS001' : 'PROF001'}
                           required
                         />
                       </div>
+                      {role === 'student' && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          ⓘ USN must start with "3GN" (GNDEC Bidar code)
+                        </p>
+                      )}
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
@@ -398,24 +504,26 @@ const AuthPage = () => {
                         </select>
                       </div>
 
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Year
-                        </label>
-                        <select
-                          name="year"
-                          value={formData.year}
-                          onChange={handleChange}
-                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                          required
-                        >
-                          <option value="">Select</option>
-                          <option value="1st Year">1st Year</option>
-                          <option value="2nd Year">2nd Year</option>
-                          <option value="3rd Year">3rd Year</option>
-                          <option value="4th Year">4th Year</option>
-                        </select>
-                      </div>
+                      {role === 'student' && (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Year
+                          </label>
+                          <select
+                            name="year"
+                            value={formData.year}
+                            onChange={handleChange}
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                            required
+                          >
+                            <option value="">Select</option>
+                            <option value="1st Year">1st Year</option>
+                            <option value="2nd Year">2nd Year</option>
+                            <option value="3rd Year">3rd Year</option>
+                            <option value="4th Year">4th Year</option>
+                          </select>
+                        </div>
+                      )}
                     </div>
                   </>
                 )}
