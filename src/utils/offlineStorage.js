@@ -104,3 +104,57 @@ export const isFileAvailableOffline = async (noteId) => {
   const file = await getOfflineFile(noteId);
   return !!file;
 };
+// Clear all offline files
+export const clearAllOfflineFiles = async () => {
+  try {
+    const db = await openDB();
+    const transaction = db.transaction([STORE_NAME], 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+
+    return new Promise((resolve, reject) => {
+      const request = store.clear();
+      request.onsuccess = () => resolve(true);
+      request.onerror = () => reject(request.error);
+    });
+  } catch (error) {
+    console.error('Error clearing offline files:', error);
+    throw error;
+  }
+};
+
+// Get total storage size
+export const getOfflineStorageSize = async () => {
+  try {
+    const files = await getAllOfflineFiles();
+    let totalSize = 0;
+    
+    files.forEach(file => {
+      if (file.fileBlob && file.fileBlob.size) {
+        totalSize += file.fileBlob.size;
+      }
+    });
+    
+    return totalSize;
+  } catch (error) {
+    console.error('Error getting storage size:', error);
+    return 0;
+  }
+};
+
+// Get count of offline files
+export const getOfflineFileCount = async () => {
+  try {
+    const db = await openDB();
+    const transaction = db.transaction([STORE_NAME], 'readonly');
+    const store = transaction.objectStore(STORE_NAME);
+
+    return new Promise((resolve, reject) => {
+      const request = store.count();
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  } catch (error) {
+    console.error('Error getting file count:', error);
+    return 0;
+  }
+};

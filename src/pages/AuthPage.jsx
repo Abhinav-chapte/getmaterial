@@ -395,31 +395,33 @@ const AuthPage = () => {
                 </p>
               </div>
 
-              {/* Role Toggle */}
-              <div className="flex gap-2 mb-6 bg-gray-100 p-1 rounded-lg">
-                <button
-                  type="button"
-                  onClick={() => setRole('student')}
-                  className={`flex-1 py-2 px-4 rounded-md font-medium transition-all ${
-                    role === 'student'
-                      ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-md'
-                      : 'text-gray-600 hover:text-gray-800'
-                  }`}
-                >
-                  🎓 Student
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRole('professor')}
-                  className={`flex-1 py-2 px-4 rounded-md font-medium transition-all ${
-                    role === 'professor'
-                      ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-md'
-                      : 'text-gray-600 hover:text-gray-800'
-                  }`}
-                >
-                  👨‍🏫 Professor
-                </button>
-              </div>
+              {/* Role Toggle - Only show on Sign Up */}
+              {isSignUp && (
+                <div className="flex gap-2 mb-6 bg-gray-100 p-1 rounded-lg">
+                  <button
+                    type="button"
+                    onClick={() => setRole('student')}
+                    className={`flex-1 py-2 px-4 rounded-md font-medium transition-all ${
+                      role === 'student'
+                        ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-md'
+                        : 'text-gray-600 hover:text-gray-800'
+                    }`}
+                  >
+                    🎓 Student
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRole('professor')}
+                    className={`flex-1 py-2 px-4 rounded-md font-medium transition-all ${
+                      role === 'professor'
+                        ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-md'
+                        : 'text-gray-600 hover:text-gray-800'
+                    }`}
+                  >
+                    👨‍🏫 Professor
+                  </button>
+                </div>
+              )}
 
               <form onSubmit={handleSubmit} className="space-y-4">
                 {isSignUp && (

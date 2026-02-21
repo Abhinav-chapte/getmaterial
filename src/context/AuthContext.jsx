@@ -25,25 +25,36 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   // Sign Up
+ // Sign Up
   const signup = async (email, password, userData) => {
     try {
       const result = await createUserWithEmailAndPassword(auth, email, password);
       
-      // Create user profile in Firestore
-      await setDoc(doc(db, 'users', result.user.uid), {
+      // Prepare base user data
+      const userDoc = {
         userId: result.user.uid,
         name: userData.name,
         email: email,
-        collegeUSN: userData.collegeUSN,
         department: userData.department,
-        year: userData.year,
         role: userData.role,
         profilePicture: '',
         createdAt: new Date(),
         uploadCount: 0,
         downloadCount: 0,
         upvotesReceived: 0
-      });
+      };
+
+      // Add role-specific fields
+      if (userData.role === 'student') {
+        userDoc.collegeUSN = userData.collegeUSN;
+        userDoc.year = userData.year;
+      } else if (userData.role === 'professor') {
+        userDoc.collegeID = userData.collegeID;
+        userDoc.year = 'N/A'; // Professors don't have year
+      }
+
+      // Create user profile in Firestore
+      await setDoc(doc(db, 'users', result.user.uid), userDoc);
 
       toast.success('Account created successfully! 🎉');
       return result.user;
@@ -53,12 +64,11 @@ export const AuthProvider = ({ children }) => {
       throw error;
     }
   };
-
   // Sign In
   const signin = async (email, password) => {
     try {
       const result = await signInWithEmailAndPassword(auth, email, password);
-      toast.success('Welcome back! 👋');
+      
       return result.user;
     } catch (error) {
       console.error('Signin error:', error);

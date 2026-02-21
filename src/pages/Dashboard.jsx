@@ -42,14 +42,11 @@ const Dashboard = () => {
       const allNotesSnapshot = await getDocs(allNotesQuery);
       const totalNotesCount = allNotesSnapshot.size;
 
-      // Get active users count (users who have uploaded at least one note)
-      const uploaders = new Set();
-      allNotesSnapshot.docs.forEach(doc => {
-        const uploadedBy = doc.data().uploadedBy;
-        if (uploadedBy) {
-          uploaders.add(uploadedBy);
-        }
-      });
+      
+      // Get active users count (all registered users)
+      const usersQuery = query(collection(db, 'users'));
+      const usersSnapshot = await getDocs(usersQuery);
+      const activeUsersCount = usersSnapshot.size;
 
       // Get downloads today
       const today = new Date();
@@ -65,7 +62,7 @@ const Dashboard = () => {
       // Update stats
       setStats({
         totalNotes: totalNotesCount,
-        activeUsers: uploaders.size,
+        activeUsers: activeUsersCount,  
         departments: 9,
         downloadsToday: downloadsTodayCount
       });
