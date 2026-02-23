@@ -79,7 +79,7 @@ const NoteCard = ({ note, onEdit, onDelete, onSave, onCancel, editingNoteId, edi
                   }}
                   className={`px-3 py-1 rounded-lg text-sm font-medium transition-all ${
                     editForm.tags.includes(tag)
-                      ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white'
+                      ? 'bg-gradient-to-r via-purple-600 to-blue-600 text-white'
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                   }`}
                 >
@@ -96,9 +96,9 @@ const NoteCard = ({ note, onEdit, onDelete, onSave, onCancel, editingNoteId, edi
                 e.stopPropagation();
                 onSave(note.id);
               }}
-              className="flex-1 bg-green-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-green-600 transition-colors"
+              className="hidden md:flex items-center gap-2 bg-gradient-to-r from-purple-600 to-teal-500 text-white px-4 py-2 rounded-lg font-medium hover:shadow-lg transform hover:scale-105 transition-all"
             >
-              Save Changes
+              Save Change
             </button>
             <button
               type="button"
@@ -330,7 +330,7 @@ const handleInputChange = useCallback((field, value) => {
           </div>
           <button
             onClick={() => navigate('/dashboard/upload')}
-            className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:shadow-lg"
+            className="flex items-center gap-2 bg-gradient-to-r via-purple-600 to-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:shadow-lg"
           >
             <Upload className="w-5 h-5" />
             Upload New Note
@@ -399,7 +399,7 @@ const handleInputChange = useCallback((field, value) => {
             </p>
             <button
               onClick={() => navigate('/dashboard/upload')}
-              className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:shadow-lg"
+              className="bg-gradient-to-r via-purple-600 to-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:shadow-lg"
             >
               Upload Your First Note
             </button>

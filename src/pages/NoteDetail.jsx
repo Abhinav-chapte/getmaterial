@@ -477,7 +477,7 @@ const NoteDetail = () => {
                       <button
                         onClick={handleDownload}
                         disabled={downloading}
-                        className="w-full bg-gradient-to-r from-purple-600 to-blue-600 text-white px-8 py-6 rounded-2xl font-bold hover:shadow-2xl flex items-center justify-center gap-3 text-xl shadow-xl transition-all transform hover:scale-105 disabled:opacity-70"
+                        className="w-full bg-gradient-to-r via-purple-600 to-blue-600 text-white px-8 py-6 rounded-2xl font-bold hover:shadow-2xl flex items-center justify-center gap-3 text-xl shadow-xl transition-all transform hover:scale-105 disabled:opacity-70"
                       >
                         <Download className={`w-7 h-7 ${downloading ? 'animate-bounce' : ''}`} />
                         {downloading ? 'Downloading...' : 'Download File'}
@@ -549,7 +549,7 @@ const NoteDetail = () => {
 
               {/* Stats */}
               <div className="grid grid-cols-3 gap-3 mb-6">
-                <div className="text-center p-3 bg-gray-50 rounded-lg">
+                <div className="text-center p-3  bg-transparent rounded-lg">
                   <Eye className="w-5 h-5 text-gray-600 mx-auto mb-1" />
                   <p className="text-lg font-bold text-gray-800">{note.views || 0}</p>
                   <p className="text-xs text-gray-600">Views</p>
@@ -629,7 +629,7 @@ const NoteDetail = () => {
         <div className="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl w-full max-w-6xl h-[90vh] flex flex-col shadow-2xl">
             {/* Modal Header */}
-            <div className="flex items-center justify-between p-4 border-b bg-gradient-to-r from-purple-600 to-blue-600">
+            <div className="flex items-center justify-between p-4 border-b bg-gradient-to-r via-purple-600 to-blue-600">
               <div className="flex items-center gap-3">
                 <FileText className="w-6 h-6 text-white" />
                 <div>
@@ -655,7 +655,7 @@ const NoteDetail = () => {
             </div>
 
             {/* Modal Footer */}
-            <div className="p-4 border-t bg-gray-50 flex items-center justify-between">
+            <div className="p-4 border-t  bg-transparent flex items-center justify-between">
               <div className="text-sm text-gray-600">
                 <span className="font-medium">{(note.fileSize / 1024 / 1024).toFixed(2)} MB</span> • PDF Document
               </div>
@@ -669,7 +669,7 @@ const NoteDetail = () => {
                 <button
                   onClick={handleDownload}
                   disabled={downloading}
-                  className="px-6 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg hover:shadow-lg font-medium transition-all flex items-center gap-2 disabled:opacity-70"
+                  className="px-6 py-2 bg-gradient-to-r via-purple-600 to-blue-600 text-white rounded-lg hover:shadow-lg font-medium transition-all flex items-center gap-2 disabled:opacity-70"
                 >
                   <Download className="w-4 h-4" />
                   {downloading ? 'Downloading...' : 'Download'}

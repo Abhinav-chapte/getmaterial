@@ -115,8 +115,7 @@ const UserProfile = () => {
     <Layout>
       <div className="max-w-4xl mx-auto">
         {/* Header */}
-        <div className="bg-gradient-to-r from-purple-600 to-blue-600 rounded-xl p-8 mb-6 text-white">
-          <div className="flex items-center justify-between">
+<div className="bg-gradient-to-r from-purple-600 to-teal-500 rounded-xl p-8 mb-6 text-white">          <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center text-purple-600 text-3xl font-bold">
                 {userProfile?.name?.charAt(0) || 'U'}
@@ -147,7 +146,7 @@ const UserProfile = () => {
           {!isEditing ? (
             // View Mode
             <div className="space-y-6">
-              <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
+              <div className="flex items-center gap-4 p-4  bg-transparent rounded-lg">
                 <User className="w-6 h-6 text-purple-600" />
                 <div>
                   <p className="text-sm text-gray-500">Full Name</p>
@@ -155,7 +154,7 @@ const UserProfile = () => {
                 </div>
               </div>
 
-              <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
+              <div className="flex items-center gap-4 p-4  bg-transparent rounded-lg">
                 <Mail className="w-6 h-6 text-purple-600" />
                 <div>
                   <p className="text-sm text-gray-500">Email Address</p>
@@ -163,7 +162,7 @@ const UserProfile = () => {
                 </div>
               </div>
 
-              <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
+              <div className="flex items-center gap-4 p-4  bg-transparent rounded-lg">
                 <Hash className="w-6 h-6 text-purple-600" />
                 <div>
                   <p className="text-sm text-gray-500">
@@ -175,7 +174,7 @@ const UserProfile = () => {
                 </div>
               </div>
 
-              <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
+              <div className="flex items-center gap-4 p-4  bg-transparent rounded-lg">
                 <Building2 className="w-6 h-6 text-purple-600" />
                 <div>
                   <p className="text-sm text-gray-500">Department</p>
@@ -184,7 +183,7 @@ const UserProfile = () => {
               </div>
 
               {isStudent && (
-                <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
+                <div className="flex items-center gap-4 p-4  bg-transparent rounded-lg">
                   <GraduationCap className="w-6 h-6 text-purple-600" />
                   <div>
                     <p className="text-sm text-gray-500">Year</p>
@@ -193,7 +192,7 @@ const UserProfile = () => {
                 </div>
               )}
 
-              <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
+              <div className="flex items-center gap-4 p-4  bg-transparent rounded-lg">
                 <User className="w-6 h-6 text-purple-600" />
                 <div>
                   <p className="text-sm text-gray-500">Role</p>
@@ -306,9 +305,9 @@ const UserProfile = () => {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg hover:shadow-lg font-semibold disabled:opacity-50"
+                  className="hidden md:flex items-center gap-2 bg-gradient-to-r from-purple-600 to-teal-500 text-white px-4 py-2 rounded-lg font-medium hover:shadow-lg transform hover:scale-105 transition-all"
                 >
-                  <Save className="w-5 h-5" />
+                  <Save className="w-4 h-4" />
                   {loading ? 'Saving...' : 'Save Changes'}
                 </button>
                 <button
@@ -316,7 +315,7 @@ const UserProfile = () => {
                   onClick={handleCancel}
                   className="flex items-center justify-center gap-2 px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-semibold"
                 >
-                  <X className="w-5 h-5" />
+                  <X className="w-4 h-4" />
                   Cancel
                 </button>
               </div>
@@ -324,7 +323,7 @@ const UserProfile = () => {
           )}
         </div>
 
-        {/* Account Stats */}
+        {/* Account Stats
         <div className="grid grid-cols-3 gap-4 mt-6">
           <div className="bg-white rounded-xl shadow-md p-6 text-center">
             <p className="text-3xl font-bold text-purple-600">0</p>
@@ -338,7 +337,7 @@ const UserProfile = () => {
             <p className="text-3xl font-bold text-green-600">0</p>
             <p className="text-gray-600 mt-1">Bookmarks</p>
           </div>
-        </div>
+        </div> */}
       </div>
     </Layout>
   );

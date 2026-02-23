@@ -326,7 +326,7 @@ const AuthPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-500 via-purple-600 to-blue-600 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-purple-500 via-purple-600 to-teal-600 flex items-center justify-center p-4">
       {/* Animated background shapes */}
       <div className="absolute inset-0 overflow-hidden">
         <div className="absolute top-20 left-10 w-72 h-72 bg-white opacity-10 rounded-full blur-3xl animate-pulse"></div>
@@ -403,7 +403,7 @@ const AuthPage = () => {
                     onClick={() => setRole('student')}
                     className={`flex-1 py-2 px-4 rounded-md font-medium transition-all ${
                       role === 'student'
-                        ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-md'
+                        ? 'bg-gradient-to-r via-purple-600 to-blue-600 text-white shadow-md'
                         : 'text-gray-600 hover:text-gray-800'
                     }`}
                   >
@@ -414,7 +414,7 @@ const AuthPage = () => {
                     onClick={() => setRole('professor')}
                     className={`flex-1 py-2 px-4 rounded-md font-medium transition-all ${
                       role === 'professor'
-                        ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-md'
+                        ? 'bg-gradient-to-r via-purple-600 to-blue-600 text-white shadow-md'
                         : 'text-gray-600 hover:text-gray-800'
                     }`}
                   >
@@ -571,7 +571,7 @@ const AuthPage = () => {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full bg-gradient-to-r from-purple-600 to-blue-600 text-white py-3 rounded-lg font-semibold hover:shadow-lg transform hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full bg-gradient-to-r via-purple-600 to-blue-600 text-white py-3 rounded-lg font-semibold hover:shadow-lg transform hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {loading ? 'Please wait...' : (isSignUp ? 'Create Account' : 'Sign In')}
                 </button>
@@ -637,7 +637,7 @@ const AuthPage = () => {
                   <button
                     type="submit"
                     disabled={loading}
-                    className="w-full bg-gradient-to-r from-purple-600 to-blue-600 text-white py-3 rounded-lg font-semibold hover:shadow-lg transform hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full bg-gradient-to-r via-purple-600 to-blue-600 text-white py-3 rounded-lg font-semibold hover:shadow-lg transform hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {loading ? 'Sending OTP...' : '📧 Send OTP'}
                   </button>

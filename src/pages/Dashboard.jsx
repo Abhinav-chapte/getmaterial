@@ -137,7 +137,7 @@ const Dashboard = () => {
     <Layout>
       <div className="max-w-7xl mx-auto">
         {/* Welcome Banner */}
-        <div className="bg-gradient-to-r from-purple-600 to-blue-600 rounded-2xl shadow-xl p-8 mb-8 text-white">
+        <div className="bg-gradient-to-r from-purple-600 to-teal-500 rounded-2xl shadow-xl p-8 mb-8 text-white">
           <h1 className="text-3xl font-bold mb-2">
             Welcome back, {userProfile?.name}! 👋
           </h1>
@@ -206,7 +206,7 @@ const Dashboard = () => {
               <p className="text-gray-600 mb-4">Be the first to share study materials!</p>
               <button
                 onClick={() => navigate('/dashboard/upload')}
-                className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:shadow-lg"
+                className="bg-gradient-to-r via-purple-600 to-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:shadow-lg"
               >
                 Upload First Note
               </button>

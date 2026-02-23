@@ -64,57 +64,57 @@ const UploadNotes = () => {
   };
 
   const handleSubmit = async () => {
-  if (!selectedFile) {
-    toast.error('Please select a file to upload');
-    return;
-  }
+    if (!selectedFile) {
+      toast.error('Please select a file to upload');
+      return;
+    }
 
-  if (!formData.title || !formData.subject || !formData.department || !formData.semester) {
-    toast.error('Please fill in all required fields');
-    return;
-  }
+    if (!formData.title || !formData.subject || !formData.department || !formData.semester) {
+      toast.error('Please fill in all required fields');
+      return;
+    }
 
-  setUploading(true);
+    setUploading(true);
 
-  try {
-    // Upload file to Cloudinary
-    const fileURL = await uploadToCloudinary(selectedFile);
+    try {
+      // Upload file to Cloudinary
+      const fileURL = await uploadToCloudinary(selectedFile);
 
-    // Save note metadata to Firestore
-    await addDoc(collection(db, 'notes'), {
-      title: formData.title,
-      subject: formData.subject,
-      department: formData.department,
-      semester: parseInt(formData.semester),
-      professor: formData.professor || '',
-      description: formData.description || '',
-      tags: formData.tags,
-      fileURL: fileURL,
-      fileType: selectedFile.type,
-      fileSize: selectedFile.size,
-      uploadedBy: currentUser.uid,
-      uploaderName: userProfile?.name || 'Anonymous',
-      upvotes: 0,
-      downvotes: 0,
-      downloads: 0,
-      views: 0,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
-    });
+      // Save note metadata to Firestore
+      await addDoc(collection(db, 'notes'), {
+        title: formData.title,
+        subject: formData.subject,
+        department: formData.department,
+        semester: parseInt(formData.semester),
+        professor: formData.professor || '',
+        description: formData.description || '',
+        tags: formData.tags,
+        fileURL: fileURL,
+        fileType: selectedFile.type,
+        fileSize: selectedFile.size,
+        uploadedBy: currentUser.uid,
+        uploaderName: userProfile?.name || 'Anonymous',
+        upvotes: 0,
+        downvotes: 0,
+        downloads: 0,
+        views: 0,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
 
-    toast.success('🎉 Notes uploaded successfully!');
-    
-    setTimeout(() => {
-      navigate('/dashboard/uploads');
-    }, 2000);
+      toast.success('🎉 Notes uploaded successfully!');
+      
+      setTimeout(() => {
+        navigate('/dashboard/uploads');
+      }, 2000);
 
-  } catch (error) {
-    console.error('Upload error:', error);
-    toast.error('Failed to upload notes. Please try again.');
-  } finally {
-    setUploading(false);
-  }
-};
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast.error('Failed to upload notes. Please try again.');
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const steps = [
     { number: 1, title: 'File Upload', icon: Upload },
@@ -142,7 +142,7 @@ const UploadNotes = () => {
                     <div
                       className={`w-12 h-12 rounded-full flex items-center justify-center font-bold ${
                         currentStep >= step.number
-                          ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white'
+                          ? 'bg-gradient-to-r from-purple-600 to-teal-500 text-white'
                           : 'bg-gray-200 text-gray-500'
                       }`}
                     >
@@ -156,7 +156,7 @@ const UploadNotes = () => {
                   </div>
                   {index < steps.length - 1 && (
                     <div className={`flex-1 h-1 mx-4 ${
-                      currentStep > step.number ? 'bg-gradient-to-r from-purple-600 to-blue-600' : 'bg-gray-200'
+                      currentStep > step.number ? 'bg-gradient-to-r from-purple-600 to-teal-500' : 'bg-gray-200'
                     }`} />
                   )}
                 </div>
@@ -227,7 +227,7 @@ const UploadNotes = () => {
                 <button
                   onClick={() => setCurrentStep(2)}
                   disabled={!selectedFile}
-                  className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-teal-500 text-white px-6 py-3 rounded-lg font-semibold hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-105 transition-all"
                 >
                   Next <ArrowRight className="w-4 h-4" />
                 </button>
@@ -335,7 +335,7 @@ const UploadNotes = () => {
                         onClick={() => handleTagToggle(tag)}
                         className={`px-4 py-2 rounded-lg font-medium transition-all ${
                           formData.tags.includes(tag)
-                            ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white'
+                            ? 'bg-gradient-to-r from-purple-600 to-teal-500 text-white shadow-md'
                             : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                         }`}
                       >
@@ -363,13 +363,13 @@ const UploadNotes = () => {
               <div className="mt-6 flex justify-between">
                 <button
                   onClick={() => setCurrentStep(1)}
-                  className="flex items-center gap-2 px-6 py-3 border border-gray-300 rounded-lg font-semibold text-gray-700 hover:bg-gray-50"
+                  className="flex items-center gap-2 px-6 py-3 border border-gray-300 rounded-lg font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
                 >
                   <ArrowLeft className="w-4 h-4" /> Back
                 </button>
                 <button
                   onClick={() => setCurrentStep(3)}
-                  className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:shadow-lg"
+                  className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-teal-500 text-white px-6 py-3 rounded-lg font-semibold hover:shadow-lg transform hover:scale-105 transition-all"
                 >
                   Next <ArrowRight className="w-4 h-4" />
                 </button>
@@ -426,14 +426,14 @@ const UploadNotes = () => {
               <div className="mt-6 flex justify-between">
                 <button
                   onClick={() => setCurrentStep(2)}
-                  className="flex items-center gap-2 px-6 py-3 border border-gray-300 rounded-lg font-semibold text-gray-700 hover:bg-gray-50"
+                  className="flex items-center gap-2 px-6 py-3 border border-gray-300 rounded-lg font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
                 >
                   <ArrowLeft className="w-4 h-4" /> Edit
                 </button>
                 <button
                   onClick={handleSubmit}
                   disabled={uploading}
-                  className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white px-8 py-3 rounded-lg font-semibold hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-teal-500 text-white px-8 py-3 rounded-lg font-semibold hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-105 transition-all"
                 >
                   {uploading ? (
                     <>

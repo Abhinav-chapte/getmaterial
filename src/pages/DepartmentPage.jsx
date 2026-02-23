@@ -235,8 +235,7 @@ const deptCode = decodeURIComponent(encodedDeptCode);
             </p>
             <button
               onClick={() => navigate('/dashboard/upload')}
-              className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:shadow-lg"
-            >
+              className="w-full bg-gradient-to-r from-purple-600 to-teal-500 text-white px-6 py-3 rounded-lg font-semibold hover:shadow-lg">
               Upload Notes
             </button>
           </div>

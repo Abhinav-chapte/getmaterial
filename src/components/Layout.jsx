@@ -4,7 +4,7 @@ import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { 
   BookOpen, Rocket, Search, Upload, Home, Star, Clock, 
   Download, Cloud, LogOut, Menu, X, User, Settings,
-  Laptop, Cpu, Cog, Building, Zap, Brain, Database, Bot, FileText,Heart 
+  Laptop, Cpu, Cog, Building, Zap, Brain, Database, Bot, FileText, Heart 
 } from 'lucide-react';
 
 const Layout = ({ children }) => {
@@ -20,7 +20,7 @@ const Layout = ({ children }) => {
   };
 
   const departments = [
-    { name: 'Computer Science', code: 'CSE', icon: Laptop, color: 'text-blue-500' },
+    { name: 'Computer Science', code: 'CSE', icon: Laptop, color: 'text-teal-500' },
     { name: 'Electronics', code: 'ECE', icon: Cpu, color: 'text-orange-500' },
     { name: 'Mechanical', code: 'MECH', icon: Cog, color: 'text-gray-500' },
     { name: 'Civil', code: 'CIVIL', icon: Building, color: 'text-yellow-700' },
@@ -43,7 +43,7 @@ const Layout = ({ children }) => {
   const isActive = (path) => location.pathname === path;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-transparent">
       {/* Top Navigation Bar */}
       <nav className="bg-white shadow-md sticky top-0 z-50">
         <div className="max-w-full mx-auto px-4">
@@ -58,7 +58,7 @@ const Layout = ({ children }) => {
               </button>
               
               <Link to="/dashboard" className="flex items-center space-x-2">
-                <div className="bg-gradient-to-r from-purple-600 to-blue-600 p-2 rounded-lg">
+                <div className="bg-gradient-to-r from-purple-600 to-teal-500 p-2 rounded-lg">
                   <BookOpen className="w-6 h-6 text-white" />
                 </div>
                 <div>
@@ -92,7 +92,7 @@ const Layout = ({ children }) => {
             <div className="flex items-center space-x-3">
               <Link
                 to="/dashboard/upload"
-                className="hidden md:flex items-center gap-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:shadow-lg transform hover:scale-105 transition-all"
+                className="hidden md:flex items-center gap-2 bg-gradient-to-r from-purple-600 to-teal-500 text-white px-4 py-2 rounded-lg font-medium hover:shadow-lg transform hover:scale-105 transition-all"
               >
                 <Upload className="w-4 h-4" />
                 Upload Notes
@@ -104,7 +104,7 @@ const Layout = ({ children }) => {
                   onClick={() => setProfileOpen(!profileOpen)}
                   className="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-100"
                 >
-                  <div className="w-10 h-10 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-bold">
+                  <div className="w-10 h-10 bg-gradient-to-r from-purple-500 to-teal-500 rounded-full flex items-center justify-center text-white font-bold">
                     {userProfile?.name?.charAt(0) || 'U'}
                   </div>
                 </button>
@@ -169,7 +169,7 @@ const Layout = ({ children }) => {
                       to={link.path}
                       className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
                         isActive(link.path)
-                          ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white'
+                          ? 'bg-gradient-to-r from-purple-600 to-teal-500 text-white shadow-md'
                           : 'text-gray-700 hover:bg-gray-100'
                       }`}
                       onClick={() => setSidebarOpen(false)}

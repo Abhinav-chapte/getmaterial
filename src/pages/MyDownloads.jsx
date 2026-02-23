@@ -347,7 +347,7 @@ const MyDownloads = () => {
             </p>
             <button
               onClick={() => navigate('/dashboard')}
-              className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:shadow-lg"
+              className="bg-gradient-to-r via-purple-600 to-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:shadow-lg"
             >
               Browse Notes
             </button>

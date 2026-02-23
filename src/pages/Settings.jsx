@@ -219,7 +219,7 @@ const Settings = () => {
                 <h2 className="text-xl font-bold text-gray-800 mb-4">Account Information</h2>
                 
                 <div className="space-y-4">
-                  <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
+                  <div className="flex items-center gap-4 p-4  bg-transparent rounded-lg">
                     <User className="w-6 h-6 text-purple-600" />
                     <div className="flex-1">
                       <p className="text-sm text-gray-500">Full Name</p>
@@ -227,7 +227,7 @@ const Settings = () => {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
+                  <div className="flex items-center gap-4 p-4  bg-transparent rounded-lg">
                     <Mail className="w-6 h-6 text-purple-600" />
                     <div className="flex-1">
                       <p className="text-sm text-gray-500">Email Address</p>
@@ -235,7 +235,7 @@ const Settings = () => {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
+                  <div className="flex items-center gap-4 p-4  bg-transparent rounded-lg">
                     <Hash className="w-6 h-6 text-purple-600" />
                     <div className="flex-1">
                       <p className="text-sm text-gray-500">
@@ -247,7 +247,7 @@ const Settings = () => {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
+                  <div className="flex items-center gap-4 p-4  bg-transparent rounded-lg">
                     <Building2 className="w-6 h-6 text-purple-600" />
                     <div className="flex-1">
                       <p className="text-sm text-gray-500">Department</p>
@@ -256,7 +256,7 @@ const Settings = () => {
                   </div>
 
                   {isStudent && (
-                    <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
+                    <div className="flex items-center gap-4 p-4  bg-transparent rounded-lg">
                       <GraduationCap className="w-6 h-6 text-purple-600" />
                       <div className="flex-1">
                         <p className="text-sm text-gray-500">Year</p>
@@ -267,7 +267,7 @@ const Settings = () => {
 
                   <button
                     onClick={() => window.location.href = '/dashboard/profile'}
-                    className="w-full mt-4 px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg hover:shadow-lg font-semibold"
+                    className="hidden md:flex items-center gap-2 bg-gradient-to-r from-purple-600 to-teal-500 text-white px-4 py-2 rounded-lg font-medium hover:shadow-lg transform hover:scale-105 transition-all"
                   >
                     Edit Profile
                   </button>
@@ -343,7 +343,7 @@ const Settings = () => {
               <h2 className="text-xl font-bold text-gray-800 mb-4">Privacy Settings</h2>
               
               <div className="space-y-4">
-                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                <div className="flex items-center justify-between p-4  bg-transparent rounded-lg">
                   <div>
                     <p className="font-semibold text-gray-800">Email Notifications</p>
                     <p className="text-sm text-gray-600">Receive updates about new uploads</p>
@@ -354,7 +354,7 @@ const Settings = () => {
                   </label>
                 </div>
 
-                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                <div className="flex items-center justify-between p-4  bg-transparent rounded-lg">
                   <div>
                     <p className="font-semibold text-gray-800">Auto-download for Offline</p>
                     <p className="text-sm text-gray-600">Automatically save files offline</p>
@@ -403,7 +403,7 @@ const Settings = () => {
                 </button>
               </div>
 
-              <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg mt-6">
+              <div className="p-4  bg-transparent border border-gray-200 rounded-lg mt-6">
                 <p className="text-sm text-gray-700">
                   <strong>About Offline Storage:</strong> Downloaded files are stored in your browser's IndexedDB 
                   for offline access. Clearing this will not delete files from the server.

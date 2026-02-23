@@ -180,7 +180,7 @@ const SearchResults = () => {
             </button>
             <button
               type="submit"
-              className="px-6 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg font-semibold hover:shadow-lg"
+              className="px-6 py-2 bg-gradient-to-r via-purple-600 to-blue-600 text-white rounded-lg font-semibold hover:shadow-lg"
             >
               Search
             </button>
