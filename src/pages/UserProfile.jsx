@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import Layout from '../components/Layout';
 import { User, Mail, Hash, Building2, GraduationCap, Edit2, Save, X } from 'lucide-react';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { toast } from 'react-toastify';
 
@@ -10,6 +10,11 @@ const UserProfile = () => {
   const { currentUser, userProfile } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [stats, setStats] = useState({
+    uploads: 0,
+    downloads: 0,
+    bookmarks: 0
+  });
   const [formData, setFormData] = useState({
     name: userProfile?.name || '',
     department: userProfile?.department || '',
@@ -21,6 +26,49 @@ const UserProfile = () => {
   const departments = [
     'CSE', 'ECE', 'MECH', 'CIVIL', 'EEE', 'AI/ML', 'ISE', 'DS', 'RA'
   ];
+
+  // Fetch user statistics
+  useEffect(() => {
+    const fetchStats = async () => {
+      if (!currentUser) return;
+
+      try {
+        // Get uploads count
+        const uploadsQuery = query(
+          collection(db, 'notes'),
+          where('uploadedBy', '==', currentUser.uid)
+        );
+        const uploadsSnapshot = await getDocs(uploadsQuery);
+        const uploadsCount = uploadsSnapshot.size;
+
+        // Get downloads count
+        const downloadsQuery = query(
+          collection(db, 'downloads'),
+          where('userId', '==', currentUser.uid)
+        );
+        const downloadsSnapshot = await getDocs(downloadsQuery);
+        const downloadsCount = downloadsSnapshot.size;
+
+        // Get bookmarks count
+        const bookmarksQuery = query(
+          collection(db, 'bookmarks'),
+          where('userId', '==', currentUser.uid)
+        );
+        const bookmarksSnapshot = await getDocs(bookmarksQuery);
+        const bookmarksCount = bookmarksSnapshot.size;
+
+        setStats({
+          uploads: uploadsCount,
+          downloads: downloadsCount,
+          bookmarks: bookmarksCount
+        });
+      } catch (error) {
+        console.error('Error fetching stats:', error);
+      }
+    };
+
+    fetchStats();
+  }, [currentUser]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -115,7 +163,8 @@ const UserProfile = () => {
     <Layout>
       <div className="max-w-4xl mx-auto">
         {/* Header */}
-<div className="bg-gradient-to-r from-purple-600 to-teal-500 rounded-xl p-8 mb-6 text-white">          <div className="flex items-center justify-between">
+        <div className="bg-gradient-to-r from-purple-600 to-teal-500 rounded-xl p-8 mb-6 text-white">
+          <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center text-purple-600 text-3xl font-bold">
                 {userProfile?.name?.charAt(0) || 'U'}
@@ -146,7 +195,7 @@ const UserProfile = () => {
           {!isEditing ? (
             // View Mode
             <div className="space-y-6">
-              <div className="flex items-center gap-4 p-4  bg-transparent rounded-lg">
+              <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
                 <User className="w-6 h-6 text-purple-600" />
                 <div>
                   <p className="text-sm text-gray-500">Full Name</p>
@@ -154,7 +203,7 @@ const UserProfile = () => {
                 </div>
               </div>
 
-              <div className="flex items-center gap-4 p-4  bg-transparent rounded-lg">
+              <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
                 <Mail className="w-6 h-6 text-purple-600" />
                 <div>
                   <p className="text-sm text-gray-500">Email Address</p>
@@ -162,7 +211,7 @@ const UserProfile = () => {
                 </div>
               </div>
 
-              <div className="flex items-center gap-4 p-4  bg-transparent rounded-lg">
+              <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
                 <Hash className="w-6 h-6 text-purple-600" />
                 <div>
                   <p className="text-sm text-gray-500">
@@ -174,7 +223,7 @@ const UserProfile = () => {
                 </div>
               </div>
 
-              <div className="flex items-center gap-4 p-4  bg-transparent rounded-lg">
+              <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
                 <Building2 className="w-6 h-6 text-purple-600" />
                 <div>
                   <p className="text-sm text-gray-500">Department</p>
@@ -183,7 +232,7 @@ const UserProfile = () => {
               </div>
 
               {isStudent && (
-                <div className="flex items-center gap-4 p-4  bg-transparent rounded-lg">
+                <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
                   <GraduationCap className="w-6 h-6 text-purple-600" />
                   <div>
                     <p className="text-sm text-gray-500">Year</p>
@@ -192,7 +241,7 @@ const UserProfile = () => {
                 </div>
               )}
 
-              <div className="flex items-center gap-4 p-4  bg-transparent rounded-lg">
+              <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
                 <User className="w-6 h-6 text-purple-600" />
                 <div>
                   <p className="text-sm text-gray-500">Role</p>
@@ -305,9 +354,9 @@ const UserProfile = () => {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="hidden md:flex items-center gap-2 bg-gradient-to-r from-purple-600 to-teal-500 text-white px-4 py-2 rounded-lg font-medium hover:shadow-lg transform hover:scale-105 transition-all"
+                  className="flex-1 flex items-center justify-center gap-2 bg-gradient-to-r from-purple-600 to-teal-500 text-white px-6 py-3 rounded-lg font-semibold hover:shadow-lg disabled:opacity-50 transform hover:scale-105 transition-all"
                 >
-                  <Save className="w-4 h-4" />
+                  <Save className="w-5 h-5" />
                   {loading ? 'Saving...' : 'Save Changes'}
                 </button>
                 <button
@@ -315,7 +364,7 @@ const UserProfile = () => {
                   onClick={handleCancel}
                   className="flex items-center justify-center gap-2 px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-semibold"
                 >
-                  <X className="w-4 h-4" />
+                  <X className="w-5 h-5" />
                   Cancel
                 </button>
               </div>
@@ -323,21 +372,21 @@ const UserProfile = () => {
           )}
         </div>
 
-        {/* Account Stats
+        {/* Account Stats */}
         <div className="grid grid-cols-3 gap-4 mt-6">
-          <div className="bg-white rounded-xl shadow-md p-6 text-center">
-            <p className="text-3xl font-bold text-purple-600">0</p>
+          <div className="bg-white rounded-xl shadow-md p-6 text-center hover:shadow-lg transition-shadow">
+            <p className="text-3xl font-bold text-purple-600">{stats.uploads}</p>
             <p className="text-gray-600 mt-1">Uploads</p>
           </div>
-          <div className="bg-white rounded-xl shadow-md p-6 text-center">
-            <p className="text-3xl font-bold text-blue-600">0</p>
+          <div className="bg-white rounded-xl shadow-md p-6 text-center hover:shadow-lg transition-shadow">
+            <p className="text-3xl font-bold text-teal-600">{stats.downloads}</p>
             <p className="text-gray-600 mt-1">Downloads</p>
           </div>
-          <div className="bg-white rounded-xl shadow-md p-6 text-center">
-            <p className="text-3xl font-bold text-green-600">0</p>
+          <div className="bg-white rounded-xl shadow-md p-6 text-center hover:shadow-lg transition-shadow">
+            <p className="text-3xl font-bold text-green-600">{stats.bookmarks}</p>
             <p className="text-gray-600 mt-1">Bookmarks</p>
           </div>
-        </div> */}
+        </div> 
       </div>
     </Layout>
   );
