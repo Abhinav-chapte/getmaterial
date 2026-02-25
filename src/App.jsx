@@ -13,6 +13,10 @@ import MyBookmarks from './pages/MyBookmarks';
 import DepartmentPage from './pages/DepartmentPage';
 import UserProfile from './pages/UserProfile';
 import Settings from './pages/Settings';
+import AdminRoute from './components/admin/AdminRoute';
+import AdminPanel from './pages/admin/AdminPanel';
+import ReportsList from './pages/admin/ReportsList';
+import ManageAdmins from './pages/admin/ManageAdmins';
 
 function App() {
   const { currentUser } = useAuth();
@@ -70,6 +74,32 @@ function App() {
       <Route
         path="/dashboard/settings"
         element={currentUser ? <Settings /> : <Navigate to="/" />}
+      />
+
+      {/* ── Admin Routes ── */}
+      <Route
+        path="/dashboard/admin"
+        element={
+          <AdminRoute>
+            <AdminPanel />
+          </AdminRoute>
+        }
+      />
+      <Route
+        path="/dashboard/admin/reports"
+        element={
+          <AdminRoute>
+            <ReportsList />
+          </AdminRoute>
+        }
+      />
+      <Route
+        path="/dashboard/admin/manage-admins"
+        element={
+          <AdminRoute>
+            <ManageAdmins />
+          </AdminRoute>
+        }
       />
     </Routes>
   );

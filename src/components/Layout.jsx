@@ -4,7 +4,7 @@ import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { 
   BookOpen, Rocket, Search, Upload, Home, Star, Clock, 
   Download, Cloud, LogOut, Menu, X, User, Settings,
-  Laptop, Cpu, Cog, Building, Zap, Brain, Database, Bot, FileText, Heart 
+  Laptop, Cpu, Cog, Building, Zap, Brain, Database, Bot, FileText, Heart, Shield
 } from 'lucide-react';
 
 const Layout = ({ children }) => {
@@ -38,6 +38,10 @@ const Layout = ({ children }) => {
     { name: 'My Downloads', path: '/dashboard/downloads', icon: Download },
     { name: 'My Uploads', path: '/dashboard/uploads', icon: Cloud },
     { name: 'My Bookmarks', path: '/dashboard/bookmarks', icon: Heart },
+  ];
+
+  const adminLinks = [
+    { name: 'Admin Panel', path: '/dashboard/admin', icon: Shield }
   ];
 
   const isActive = (path) => location.pathname === path;
@@ -181,6 +185,35 @@ const Layout = ({ children }) => {
                 })}
               </div>
             </div>
+
+            {/* Admin Links - Only show if user is admin */}
+            {(userProfile?.role === 'admin' || userProfile?.role === 'super_admin') && (
+              <div className="px-4 mb-6">
+                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                  Admin
+                </h3>
+                <div className="space-y-1">
+                  {adminLinks.map((link) => {
+                    const Icon = link.icon;
+                    return (
+                      <Link
+                        key={link.path}
+                        to={link.path}
+                        className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+                          isActive(link.path)
+                            ? 'bg-gradient-to-r from-purple-600 to-teal-500 text-white shadow-md'
+                            : 'text-gray-700 hover:bg-gray-100'
+                        }`}
+                        onClick={() => setSidebarOpen(false)}
+                      >
+                        <Icon className="w-5 h-5" />
+                        <span className="font-medium">{link.name}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Departments */}
             <div className="px-4">

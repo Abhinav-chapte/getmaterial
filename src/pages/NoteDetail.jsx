@@ -10,6 +10,7 @@ import { doc, getDoc, updateDoc, increment, addDoc, collection, query, where, ge
 import { db } from '../firebase/config';
 import { toast } from 'react-toastify';
 import { saveFileOffline } from '../utils/offlineStorage';
+import ReportButton from '../components/admin/ReportButton';
 
 const NoteDetail = () => {
   const { noteId } = useParams();
@@ -615,10 +616,11 @@ const NoteDetail = () => {
               </div>
 
               {/* Report Button */}
-              <button className="w-full flex items-center justify-center gap-2 text-sm text-gray-500 hover:text-red-600 mt-3">
-                <Flag className="w-4 h-4" />
-                Report inappropriate content
-              </button>
+             <ReportButton
+              noteId={noteId}
+              noteTitle={note.title}
+              reportedBy={note.reportedBy || []}
+            />
             </div>
           </div>
         </div>

@@ -96,9 +96,9 @@ const NoteCard = ({ note, onEdit, onDelete, onSave, onCancel, editingNoteId, edi
                 e.stopPropagation();
                 onSave(note.id);
               }}
-              className="hidden md:flex items-center gap-2 bg-gradient-to-r from-purple-600 to-teal-500 text-white px-4 py-2 rounded-lg font-medium hover:shadow-lg transform hover:scale-105 transition-all"
+              className="flex-1 bg-green-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-green-600 transition-colors"
             >
-              Save Change
+              Save Changes
             </button>
             <button
               type="button"
