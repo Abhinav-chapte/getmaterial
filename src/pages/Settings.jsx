@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import Layout from '../components/Layout';
-import { User, Lock, Shield, Database, Trash2, Save, Eye, EyeOff, Mail, Hash, Building2, GraduationCap } from 'lucide-react';
+import { User, Lock, Shield, Database, Trash2, Eye, EyeOff, Mail, Hash, Building2, GraduationCap, Loader } from 'lucide-react';
 import { updatePassword, deleteUser } from 'firebase/auth';
-import { doc, deleteDoc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, deleteDoc, updateDoc, collection, query, where, getDocs, getDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
 import { toast } from 'react-toastify';
 import { clearAllOfflineFiles, getOfflineStorageSize, getOfflineFileCount } from '../utils/offlineStorage';
@@ -14,7 +14,7 @@ const Settings = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  
+
   // Password change states
   const [passwordData, setPasswordData] = useState({
     newPassword: '',
@@ -25,8 +25,38 @@ const Settings = () => {
   const [storageSize, setStorageSize] = useState(0);
   const [fileCount, setFileCount] = useState(0);
 
-  // Load storage info
-  useState(() => {
+  // ── Privacy toggle states ──────────────────────────────────────
+  const [privacySettings, setPrivacySettings] = useState({
+    emailNotifications: false,
+    autoDownloadOffline: false,
+  });
+  const [privacyLoading, setPrivacyLoading] = useState(true);
+  const [savingToggle, setSavingToggle] = useState(null); // which toggle is saving
+
+  // Load privacy settings from Firestore on mount
+  useEffect(() => {
+    const loadPrivacySettings = async () => {
+      if (!currentUser) return;
+      try {
+        const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
+        if (userDoc.exists()) {
+          const data = userDoc.data();
+          setPrivacySettings({
+            emailNotifications: data.emailNotifications ?? false,
+            autoDownloadOffline: data.autoDownloadOffline ?? false,
+          });
+        }
+      } catch (error) {
+        console.error('Error loading privacy settings:', error);
+      } finally {
+        setPrivacyLoading(false);
+      }
+    };
+    loadPrivacySettings();
+  }, [currentUser]);
+
+  // Load storage info on mount
+  useEffect(() => {
     const loadStorageInfo = async () => {
       const size = await getOfflineStorageSize();
       const count = await getOfflineFileCount();
@@ -36,24 +66,50 @@ const Settings = () => {
     loadStorageInfo();
   }, []);
 
+  // Toggle a privacy setting and immediately save to Firestore
+  const handleToggle = async (key) => {
+    const newValue = !privacySettings[key];
+
+    // Optimistically update UI
+    setPrivacySettings(prev => ({ ...prev, [key]: newValue }));
+    setSavingToggle(key);
+
+    try {
+      await updateDoc(doc(db, 'users', currentUser.uid), {
+        [key]: newValue,
+      });
+      toast.success(
+        newValue
+          ? `${key === 'emailNotifications' ? 'Email notifications' : 'Auto-download'} enabled`
+          : `${key === 'emailNotifications' ? 'Email notifications' : 'Auto-download'} disabled`,
+        { autoClose: 1500 }
+      );
+    } catch (error) {
+      console.error('Error saving setting:', error);
+      // Revert on error
+      setPrivacySettings(prev => ({ ...prev, [key]: !newValue }));
+      toast.error('Failed to save setting. Please try again.');
+    } finally {
+      setSavingToggle(null);
+    }
+  };
+  // ──────────────────────────────────────────────────────────────
+
   const isStudent = userProfile?.role === 'student';
-  const isProfessor = userProfile?.role === 'professor';
 
   const handlePasswordChange = async (e) => {
     e.preventDefault();
-    
+
     if (passwordData.newPassword !== passwordData.confirmPassword) {
       toast.error('Passwords do not match');
       return;
     }
-
     if (passwordData.newPassword.length < 6) {
       toast.error('Password must be at least 6 characters');
       return;
     }
 
     setLoading(true);
-
     try {
       await updatePassword(auth.currentUser, passwordData.newPassword);
       toast.success('Password updated successfully!');
@@ -71,10 +127,7 @@ const Settings = () => {
   };
 
   const handleClearOfflineFiles = async () => {
-    if (!window.confirm('Are you sure you want to clear all offline files? This cannot be undone.')) {
-      return;
-    }
-
+    if (!window.confirm('Are you sure you want to clear all offline files? This cannot be undone.')) return;
     try {
       await clearAllOfflineFiles();
       setStorageSize(0);
@@ -90,49 +143,24 @@ const Settings = () => {
     const confirmation = window.prompt(
       'This will permanently delete your account and all your data. Type "DELETE" to confirm:'
     );
-
     if (confirmation !== 'DELETE') {
       toast.info('Account deletion cancelled');
       return;
     }
 
     setLoading(true);
-
     try {
-      // Delete user document
       await deleteDoc(doc(db, 'users', currentUser.uid));
 
-      // Delete user's notes
-      const notesQuery = query(collection(db, 'notes'), where('uploaderId', '==', currentUser.uid));
-      const notesSnapshot = await getDocs(notesQuery);
-      for (const noteDoc of notesSnapshot.docs) {
-        await deleteDoc(noteDoc.ref);
+      const collections = ['notes', 'votes', 'bookmarks', 'downloads'];
+      const fields = ['uploaderId', 'userId', 'userId', 'userId'];
+      for (let i = 0; i < collections.length; i++) {
+        const q = query(collection(db, collections[i]), where(fields[i], '==', currentUser.uid));
+        const snap = await getDocs(q);
+        for (const d of snap.docs) await deleteDoc(d.ref);
       }
 
-      // Delete user's votes
-      const votesQuery = query(collection(db, 'votes'), where('userId', '==', currentUser.uid));
-      const votesSnapshot = await getDocs(votesQuery);
-      for (const voteDoc of votesSnapshot.docs) {
-        await deleteDoc(voteDoc.ref);
-      }
-
-      // Delete user's bookmarks
-      const bookmarksQuery = query(collection(db, 'bookmarks'), where('userId', '==', currentUser.uid));
-      const bookmarksSnapshot = await getDocs(bookmarksQuery);
-      for (const bookmarkDoc of bookmarksSnapshot.docs) {
-        await deleteDoc(bookmarkDoc.ref);
-      }
-
-      // Delete user's downloads
-      const downloadsQuery = query(collection(db, 'downloads'), where('userId', '==', currentUser.uid));
-      const downloadsSnapshot = await getDocs(downloadsQuery);
-      for (const downloadDoc of downloadsSnapshot.docs) {
-        await deleteDoc(downloadDoc.ref);
-      }
-
-      // Delete Firebase Auth user
       await deleteUser(auth.currentUser);
-
       toast.success('Account deleted successfully');
       logout();
     } catch (error) {
@@ -152,7 +180,46 @@ const Settings = () => {
     const k = 1024;
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+  };
+
+  // Reusable toggle row component
+  const ToggleRow = ({ label, description, settingKey }) => {
+    const isOn = privacySettings[settingKey];
+    const isSaving = savingToggle === settingKey;
+
+    return (
+      <div className="flex items-center justify-between p-4 bg-transparent rounded-lg">
+        <div>
+          <p className="font-semibold text-gray-800">{label}</p>
+          <p className="text-sm text-gray-600">{description}</p>
+        </div>
+        <button
+          onClick={() => handleToggle(settingKey)}
+          disabled={privacyLoading || isSaving}
+          className="relative flex-shrink-0 focus:outline-none"
+          aria-label={`Toggle ${label}`}
+        >
+          {isSaving ? (
+            <div className="w-11 h-6 flex items-center justify-center">
+              <Loader className="w-4 h-4 animate-spin text-purple-500" />
+            </div>
+          ) : (
+            <div
+              className={`w-11 h-6 rounded-full transition-colors duration-200 ${
+                isOn ? 'bg-purple-600' : 'bg-gray-200'
+              }`}
+            >
+              <div
+                className={`absolute top-[2px] h-5 w-5 bg-white border border-gray-300 rounded-full shadow transition-transform duration-200 ${
+                  isOn ? 'translate-x-5' : 'translate-x-0.5'
+                }`}
+              />
+            </div>
+          )}
+        </button>
+      </div>
+    );
   };
 
   return (
@@ -163,111 +230,62 @@ const Settings = () => {
         {/* Tabs */}
         <div className="bg-white rounded-xl shadow-md mb-6">
           <div className="flex border-b">
-            <button
-              onClick={() => setActiveTab('account')}
-              className={`flex-1 py-4 px-6 font-semibold transition-colors flex items-center justify-center gap-2 ${
-                activeTab === 'account'
-                  ? 'text-purple-600 border-b-2 border-purple-600'
-                  : 'text-gray-600 hover:text-gray-800'
-              }`}
-            >
-              <User className="w-5 h-5" />
-              Account
-            </button>
-            <button
-              onClick={() => setActiveTab('privacy')}
-              className={`flex-1 py-4 px-6 font-semibold transition-colors flex items-center justify-center gap-2 ${
-                activeTab === 'privacy'
-                  ? 'text-purple-600 border-b-2 border-purple-600'
-                  : 'text-gray-600 hover:text-gray-800'
-              }`}
-            >
-              <Shield className="w-5 h-5" />
-              Privacy
-            </button>
-            <button
-              onClick={() => setActiveTab('storage')}
-              className={`flex-1 py-4 px-6 font-semibold transition-colors flex items-center justify-center gap-2 ${
-                activeTab === 'storage'
-                  ? 'text-purple-600 border-b-2 border-purple-600'
-                  : 'text-gray-600 hover:text-gray-800'
-              }`}
-            >
-              <Database className="w-5 h-5" />
-              Storage
-            </button>
-            <button
-              onClick={() => setActiveTab('danger')}
-              className={`flex-1 py-4 px-6 font-semibold transition-colors flex items-center justify-center gap-2 ${
-                activeTab === 'danger'
-                  ? 'text-red-600 border-b-2 border-red-600'
-                  : 'text-gray-600 hover:text-gray-800'
-              }`}
-            >
-              <Trash2 className="w-5 h-5" />
-              Danger Zone
-            </button>
+            {[
+              { id: 'account', label: 'Account', icon: User },
+              { id: 'privacy', label: 'Privacy', icon: Shield },
+              { id: 'storage', label: 'Storage', icon: Database },
+              { id: 'danger', label: 'Danger Zone', icon: Trash2 },
+            ].map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                onClick={() => setActiveTab(id)}
+                className={`flex-1 py-4 px-6 font-semibold transition-colors flex items-center justify-center gap-2 ${
+                  activeTab === id
+                    ? id === 'danger'
+                      ? 'text-red-600 border-b-2 border-red-600'
+                      : 'text-purple-600 border-b-2 border-purple-600'
+                    : 'text-gray-600 hover:text-gray-800'
+                }`}
+              >
+                <Icon className="w-5 h-5" />
+                {label}
+              </button>
+            ))}
           </div>
         </div>
 
         {/* Tab Content */}
         <div className="bg-white rounded-xl shadow-md p-6">
-          {/* Account Tab */}
+
+          {/* ── Account Tab ── */}
           {activeTab === 'account' && (
             <div className="space-y-6">
               <div>
                 <h2 className="text-xl font-bold text-gray-800 mb-4">Account Information</h2>
-                
                 <div className="space-y-4">
-                  <div className="flex items-center gap-4 p-4  bg-transparent rounded-lg">
-                    <User className="w-6 h-6 text-purple-600" />
-                    <div className="flex-1">
-                      <p className="text-sm text-gray-500">Full Name</p>
-                      <p className="text-lg font-semibold text-gray-800">{userProfile?.name}</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-4 p-4  bg-transparent rounded-lg">
-                    <Mail className="w-6 h-6 text-purple-600" />
-                    <div className="flex-1">
-                      <p className="text-sm text-gray-500">Email Address</p>
-                      <p className="text-lg font-semibold text-gray-800">{currentUser?.email}</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-4 p-4  bg-transparent rounded-lg">
-                    <Hash className="w-6 h-6 text-purple-600" />
-                    <div className="flex-1">
-                      <p className="text-sm text-gray-500">
-                        {isStudent ? 'College USN' : 'College ID'}
-                      </p>
-                      <p className="text-lg font-semibold text-gray-800">
-                        {isStudent ? userProfile?.collegeUSN : userProfile?.collegeID}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-4 p-4  bg-transparent rounded-lg">
-                    <Building2 className="w-6 h-6 text-purple-600" />
-                    <div className="flex-1">
-                      <p className="text-sm text-gray-500">Department</p>
-                      <p className="text-lg font-semibold text-gray-800">{userProfile?.department}</p>
-                    </div>
-                  </div>
-
-                  {isStudent && (
-                    <div className="flex items-center gap-4 p-4  bg-transparent rounded-lg">
-                      <GraduationCap className="w-6 h-6 text-purple-600" />
+                  {[
+                    { icon: User, label: 'Full Name', value: userProfile?.name },
+                    { icon: Mail, label: 'Email Address', value: currentUser?.email },
+                    {
+                      icon: Hash,
+                      label: isStudent ? 'College USN' : 'College ID',
+                      value: isStudent ? userProfile?.collegeUSN : userProfile?.collegeID,
+                    },
+                    { icon: Building2, label: 'Department', value: userProfile?.department },
+                    ...(isStudent ? [{ icon: GraduationCap, label: 'Year', value: userProfile?.year }] : []),
+                  ].map(({ icon: Icon, label, value }) => (
+                    <div key={label} className="flex items-center gap-4 p-4 bg-transparent rounded-lg">
+                      <Icon className="w-6 h-6 text-purple-600" />
                       <div className="flex-1">
-                        <p className="text-sm text-gray-500">Year</p>
-                        <p className="text-lg font-semibold text-gray-800">{userProfile?.year}</p>
+                        <p className="text-sm text-gray-500">{label}</p>
+                        <p className="text-lg font-semibold text-gray-800">{value}</p>
                       </div>
                     </div>
-                  )}
+                  ))}
 
                   <button
                     onClick={() => window.location.href = '/dashboard/profile'}
-                    className="hidden md:flex items-center gap-2 bg-gradient-to-r from-purple-600 to-teal-500 text-white px-4 py-2 rounded-lg font-medium hover:shadow-lg transform hover:scale-105 transition-all"
+                    className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-teal-500 text-white px-4 py-2 rounded-lg font-medium hover:shadow-lg transform hover:scale-105 transition-all"
                   >
                     Edit Profile
                   </button>
@@ -277,54 +295,42 @@ const Settings = () => {
               <div className="pt-6 border-t">
                 <h3 className="text-lg font-bold text-gray-800 mb-4">Change Password</h3>
                 <form onSubmit={handlePasswordChange} className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      New Password
-                    </label>
-                    <div className="relative">
-                      <Lock className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
-                      <input
-                        type={showNewPassword ? 'text' : 'password'}
-                        value={passwordData.newPassword}
-                        onChange={(e) => setPasswordData({...passwordData, newPassword: e.target.value})}
-                        className="w-full pl-10 pr-12 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                        placeholder="Enter new password"
-                        required
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowNewPassword(!showNewPassword)}
-                        className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
-                      >
-                        {showNewPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                      </button>
+                  {[
+                    {
+                      label: 'New Password',
+                      key: 'newPassword',
+                      show: showNewPassword,
+                      setShow: setShowNewPassword,
+                    },
+                    {
+                      label: 'Confirm New Password',
+                      key: 'confirmPassword',
+                      show: showPassword,
+                      setShow: setShowPassword,
+                    },
+                  ].map(({ label, key, show, setShow }) => (
+                    <div key={key}>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+                      <div className="relative">
+                        <Lock className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
+                        <input
+                          type={show ? 'text' : 'password'}
+                          value={passwordData[key]}
+                          onChange={(e) => setPasswordData({ ...passwordData, [key]: e.target.value })}
+                          className="w-full pl-10 pr-12 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                          placeholder={label}
+                          required
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShow(!show)}
+                          className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
+                        >
+                          {show ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                        </button>
+                      </div>
                     </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Confirm New Password
-                    </label>
-                    <div className="relative">
-                      <Lock className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
-                      <input
-                        type={showPassword ? 'text' : 'password'}
-                        value={passwordData.confirmPassword}
-                        onChange={(e) => setPasswordData({...passwordData, confirmPassword: e.target.value})}
-                        className="w-full pl-10 pr-12 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                        placeholder="Confirm new password"
-                        required
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
-                      >
-                        {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                      </button>
-                    </div>
-                  </div>
-
+                  ))}
                   <button
                     type="submit"
                     disabled={loading}
@@ -337,49 +343,43 @@ const Settings = () => {
             </div>
           )}
 
-          {/* Privacy Tab */}
+          {/* ── Privacy Tab ── */}
           {activeTab === 'privacy' && (
             <div className="space-y-6">
               <h2 className="text-xl font-bold text-gray-800 mb-4">Privacy Settings</h2>
-              
-              <div className="space-y-4">
-                <div className="flex items-center justify-between p-4  bg-transparent rounded-lg">
-                  <div>
-                    <p className="font-semibold text-gray-800">Email Notifications</p>
-                    <p className="text-sm text-gray-600">Receive updates about new uploads</p>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input type="checkbox" className="sr-only peer" />
-                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
-                  </label>
-                </div>
 
-                <div className="flex items-center justify-between p-4  bg-transparent rounded-lg">
-                  <div>
-                    <p className="font-semibold text-gray-800">Auto-download for Offline</p>
-                    <p className="text-sm text-gray-600">Automatically save files offline</p>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input type="checkbox" className="sr-only peer" />
-                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
-                  </label>
+              {privacyLoading ? (
+                <div className="flex items-center justify-center py-10">
+                  <Loader className="w-7 h-7 animate-spin text-purple-600" />
                 </div>
-              </div>
+              ) : (
+                <div className="space-y-2">
+                  <ToggleRow
+                    label="Email Notifications"
+                    description="Receive updates about new uploads"
+                    settingKey="emailNotifications"
+                  />
+                  <ToggleRow
+                    label="Auto-download for Offline"
+                    description="Automatically save files offline"
+                    settingKey="autoDownloadOffline"
+                  />
+                </div>
+              )}
 
               <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg mt-6">
                 <p className="text-sm text-blue-800">
-                  <strong>Privacy Information:</strong> Your data is stored securely using Firebase and is only accessible by you. 
-                  We do not share your information with third parties.
+                  <strong>Privacy Information:</strong> Your data is stored securely using Firebase and is
+                  only accessible by you. We do not share your information with third parties.
                 </p>
               </div>
             </div>
           )}
 
-          {/* Storage Tab */}
+          {/* ── Storage Tab ── */}
           {activeTab === 'storage' && (
             <div className="space-y-6">
               <h2 className="text-xl font-bold text-gray-800 mb-4">Offline Storage</h2>
-              
               <div className="space-y-4">
                 <div className="p-6 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg border border-purple-200">
                   <div className="flex items-center justify-between mb-4">
@@ -389,9 +389,7 @@ const Settings = () => {
                     </div>
                     <Database className="w-12 h-12 text-purple-400" />
                   </div>
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <p>{fileCount} files stored offline</p>
-                  </div>
+                  <p className="text-sm text-gray-600">{fileCount} files stored offline</p>
                 </div>
 
                 <button
@@ -403,16 +401,16 @@ const Settings = () => {
                 </button>
               </div>
 
-              <div className="p-4  bg-transparent border border-gray-200 rounded-lg mt-6">
+              <div className="p-4 bg-transparent border border-gray-200 rounded-lg">
                 <p className="text-sm text-gray-700">
-                  <strong>About Offline Storage:</strong> Downloaded files are stored in your browser's IndexedDB 
-                  for offline access. Clearing this will not delete files from the server.
+                  <strong>About Offline Storage:</strong> Downloaded files are stored in your browser's
+                  IndexedDB for offline access. Clearing this will not delete files from the server.
                 </p>
               </div>
             </div>
           )}
 
-          {/* Danger Zone Tab */}
+          {/* ── Danger Zone Tab ── */}
           {activeTab === 'danger' && (
             <div className="space-y-6">
               <div className="border-2 border-red-300 rounded-lg p-6 bg-red-50">
