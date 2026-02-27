@@ -3,7 +3,9 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut,
-  onAuthStateChanged
+  onAuthStateChanged,
+  sendEmailVerification,
+  reload
 } from 'firebase/auth';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
@@ -24,60 +26,87 @@ export const AuthProvider = ({ children }) => {
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Sign Up
- // Sign Up
+  // ── Sign Up ────────────────────────────────────────────────────
   const signup = async (email, password, userData) => {
-    try {
-      const result = await createUserWithEmailAndPassword(auth, email, password);
-      
-      // Prepare base user data
-      const userDoc = {
-        userId: result.user.uid,
-        name: userData.name,
-        email: email,
-        department: userData.department,
-        role: userData.role,
-        profilePicture: '',
-        createdAt: new Date(),
-        uploadCount: 0,
-        downloadCount: 0,
-        upvotesReceived: 0
-      };
+    const result = await createUserWithEmailAndPassword(auth, email, password);
 
-      // Add role-specific fields
-      if (userData.role === 'student') {
-        userDoc.collegeUSN = userData.collegeUSN;
-        userDoc.year = userData.year;
-      } else if (userData.role === 'professor') {
-        userDoc.collegeID = userData.collegeID;
-        userDoc.year = 'N/A'; // Professors don't have year
+    // Send Firebase verification email immediately
+    await sendEmailVerification(result.user);
+
+    // Prepare base user document
+    const userDoc = {
+      userId: result.user.uid,
+      name: userData.name,
+      email: email,
+      department: userData.department,
+      role: userData.role,
+      profilePicture: '',
+      createdAt: new Date(),
+      uploadCount: 0,
+      downloadCount: 0,
+      upvotesReceived: 0,
+      emailVerified: false,
+    };
+
+    // Role-specific fields
+    if (userData.role === 'student') {
+      userDoc.collegeUSN = userData.collegeUSN;
+      userDoc.year = userData.year;
+    } else if (userData.role === 'professor') {
+      userDoc.collegeID = userData.collegeID;
+      userDoc.year = 'N/A';
+    }
+
+    await setDoc(doc(db, 'users', result.user.uid), userDoc);
+
+    // Sign out immediately — they must verify email before accessing the app
+    await signOut(auth);
+
+    return result.user;
+  };
+
+  // ── Sign In ────────────────────────────────────────────────────
+  const signin = async (email, password) => {
+    const result = await signInWithEmailAndPassword(auth, email, password);
+
+    // Reload user to get latest emailVerified status from Firebase
+    await reload(result.user);
+
+    if (!result.user.emailVerified) {
+      // Sign them out immediately
+      await signOut(auth);
+      const error = new Error('Please verify your email before logging in. Check your inbox for the verification link.');
+      error.code = 'auth/email-not-verified';
+      throw error;
+    }
+
+    return result.user;
+  };
+
+  // ── Resend Verification Email ──────────────────────────────────
+  const resendVerificationEmail = async (email, password) => {
+    try {
+      // Sign in temporarily to get user object
+      const result = await signInWithEmailAndPassword(auth, email, password);
+      await reload(result.user);
+
+      if (result.user.emailVerified) {
+        await signOut(auth);
+        toast.info('Your email is already verified! Please login.');
+        return false;
       }
 
-      // Create user profile in Firestore
-      await setDoc(doc(db, 'users', result.user.uid), userDoc);
-
-      toast.success('Account created successfully! 🎉');
-      return result.user;
+      await sendEmailVerification(result.user);
+      await signOut(auth);
+      toast.success('✅ Verification email resent! Check your inbox.');
+      return true;
     } catch (error) {
-      console.error('Signup error:', error);
-      toast.error(error.message);
-      throw error;
-    }
-  };
-  // Sign In
-  const signin = async (email, password) => {
-    try {
-      const result = await signInWithEmailAndPassword(auth, email, password);
-      
-      return result.user;
-    } catch (error) {
-      console.error('Signin error:', error);
-      toast.error('Invalid email or password');
+      console.error('Resend error:', error);
       throw error;
     }
   };
 
-  // Logout
+  // ── Logout ─────────────────────────────────────────────────────
   const logout = async () => {
     try {
       await signOut(auth);
@@ -89,11 +118,10 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Fetch user profile
+  // ── Fetch user profile from Firestore ─────────────────────────
   const fetchUserProfile = async (uid) => {
     try {
-      const docRef = doc(db, 'users', uid);
-      const docSnap = await getDoc(docRef);
+      const docSnap = await getDoc(doc(db, 'users', uid));
       if (docSnap.exists()) {
         setUserProfile(docSnap.data());
       }
@@ -102,6 +130,7 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // ── Auth state listener ────────────────────────────────────────
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setCurrentUser(user);
@@ -112,7 +141,6 @@ export const AuthProvider = ({ children }) => {
       }
       setLoading(false);
     });
-
     return unsubscribe;
   }, []);
 
@@ -122,7 +150,8 @@ export const AuthProvider = ({ children }) => {
     signup,
     signin,
     logout,
-    loading
+    resendVerificationEmail,
+    loading,
   };
 
   return (
