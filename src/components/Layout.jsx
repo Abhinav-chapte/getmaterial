@@ -157,19 +157,19 @@ const Layout = ({ children }) => {
           </div>
         </div>
 
-        {/* ── Mobile Search Bar — shown below navbar on small screens only ── */}
-        <div className="md:hidden px-4 pb-3">
-          <div className="relative w-full">
+        {/* ── Mobile Search Bar + Upload Button row ── */}
+        <div className="md:hidden px-3 pb-3 flex items-center gap-2">
+          {/* Search input */}
+          <div className="relative flex-1">
             <Search className="absolute left-3 top-2.5 w-5 h-5 text-gray-400" />
             <input
               type="text"
               value={mobileSearch}
               onChange={(e) => setMobileSearch(e.target.value)}
               onKeyDown={handleMobileSearch}
-              placeholder="Search notes, subjects, professors..."
+              placeholder="Search notes, subjects..."
               className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm bg-gray-50"
             />
-            {/* Search button for touch users */}
             {mobileSearch.trim() && (
               <button
                 onClick={() => {
@@ -178,10 +178,19 @@ const Layout = ({ children }) => {
                 }}
                 className="absolute right-2 top-1.5 bg-gradient-to-r from-purple-600 to-teal-500 text-white px-3 py-1.5 rounded-lg text-xs font-semibold"
               >
-                Search
+                Go
               </button>
             )}
           </div>
+
+          {/* Upload button — icon + label, always visible on mobile */}
+          <Link
+            to="/dashboard/upload"
+            className="flex items-center gap-1.5 bg-gradient-to-r from-purple-600 to-teal-500 text-white px-3 py-2.5 rounded-xl font-semibold text-sm whitespace-nowrap hover:shadow-lg transition-all flex-shrink-0"
+          >
+            <Upload className="w-4 h-4" />
+            Upload
+          </Link>
         </div>
       </nav>
 
@@ -191,22 +200,10 @@ const Layout = ({ children }) => {
           className={`${
             sidebarOpen ? 'translate-x-0' : '-translate-x-full'
           } fixed lg:static inset-y-0 left-0 z-40 w-64 bg-white shadow-lg transform transition-transform duration-300 ease-in-out lg:translate-x-0`}
-          style={{ top: 0, paddingTop: '0' }}
+          style={{ top: 0 }}
         >
-          {/* Sidebar scroll area — offset for navbar height on mobile */}
-          <div className="h-full overflow-y-auto py-6 pt-20 lg:pt-6">
-
-            {/* Mobile: Upload button inside sidebar */}
-            <div className="px-4 mb-5 lg:hidden">
-              <Link
-                to="/dashboard/upload"
-                onClick={() => setSidebarOpen(false)}
-                className="flex items-center justify-center gap-2 w-full bg-gradient-to-r from-purple-600 to-teal-500 text-white px-4 py-3 rounded-xl font-semibold hover:shadow-lg transition-all"
-              >
-                <Upload className="w-5 h-5" />
-                Upload Notes
-              </Link>
-            </div>
+          {/* pt-28 on mobile accounts for: 64px navbar + ~48px search/upload row */}
+          <div className="h-full overflow-y-auto py-6 pt-28 lg:pt-6">
 
             {/* Quick Links */}
             <div className="px-4 mb-6">
