@@ -95,7 +95,8 @@ const Settings = () => {
   };
   // ──────────────────────────────────────────────────────────────
 
-  const isStudent = userProfile?.role === 'student';
+  // Detect by field presence, not role — promoted students still have collegeUSN
+  const isStudent = !!(userProfile?.collegeUSN);
 
   const handlePasswordChange = async (e) => {
     e.preventDefault();

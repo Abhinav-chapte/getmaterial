@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import Layout from '../components/Layout';
-import { User, Mail, Hash, Building2, GraduationCap, Edit2, Save, X } from 'lucide-react';
+import { User, Mail, Hash, Building2, GraduationCap, Edit2, Save, X, Shield } from 'lucide-react';
 import { doc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { toast } from 'react-toastify';
@@ -10,11 +10,7 @@ const UserProfile = () => {
   const { currentUser, userProfile } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [stats, setStats] = useState({
-    uploads: 0,
-    downloads: 0,
-    bookmarks: 0
-  });
+  const [stats, setStats] = useState({ uploads: 0, downloads: 0, bookmarks: 0 });
   const [formData, setFormData] = useState({
     name: userProfile?.name || '',
     department: userProfile?.department || '',
@@ -23,56 +19,49 @@ const UserProfile = () => {
     collegeID: userProfile?.collegeID || '',
   });
 
-  const departments = [
-    'CSE', 'ECE', 'MECH', 'CIVIL', 'EEE', 'AI/ML', 'ISE', 'DS', 'RA'
-  ];
+  const departments = ['CSE', 'ECE', 'MECH', 'CIVIL', 'EEE', 'AI/ML', 'ISE', 'DS', 'RA'];
 
-  // Fetch user statistics
+  // ── KEY FIX: detect original signup type by checking which field exists ──
+  // A promoted student still has collegeUSN in Firestore, not collegeID
+  const isStudent = !!(userProfile?.collegeUSN);
+  const isProfessor = !!(userProfile?.collegeID) && !userProfile?.collegeUSN;
+
+  // Friendly role label
+  const getRoleLabel = () => {
+    const role = userProfile?.role?.trim();
+    if (role === 'super_admin') return '👑 Super Admin';
+    if (role === 'admin') return '🛡️ Admin';
+    if (role === 'professor') return '👨‍🏫 Professor';
+    return '🎓 Student';
+  };
+
   useEffect(() => {
     const fetchStats = async () => {
       if (!currentUser) return;
-
       try {
-        // Get uploads count
-        const uploadsQuery = query(
-          collection(db, 'notes'),
-          where('uploadedBy', '==', currentUser.uid)
+        const uploadsSnap = await getDocs(
+          query(collection(db, 'notes'), where('uploadedBy', '==', currentUser.uid))
         );
-        const uploadsSnapshot = await getDocs(uploadsQuery);
-        const uploadsCount = uploadsSnapshot.size;
-
-        // Get downloads count
-        const downloadsQuery = query(
-          collection(db, 'downloads'),
-          where('userId', '==', currentUser.uid)
+        const downloadsSnap = await getDocs(
+          query(collection(db, 'downloads'), where('userId', '==', currentUser.uid))
         );
-        const downloadsSnapshot = await getDocs(downloadsQuery);
-        const downloadsCount = downloadsSnapshot.size;
-
-        // Get bookmarks count
-        const bookmarksQuery = query(
-          collection(db, 'bookmarks'),
-          where('userId', '==', currentUser.uid)
+        const bookmarksSnap = await getDocs(
+          query(collection(db, 'bookmarks'), where('userId', '==', currentUser.uid))
         );
-        const bookmarksSnapshot = await getDocs(bookmarksQuery);
-        const bookmarksCount = bookmarksSnapshot.size;
-
         setStats({
-          uploads: uploadsCount,
-          downloads: downloadsCount,
-          bookmarks: bookmarksCount
+          uploads: uploadsSnap.size,
+          downloads: downloadsSnap.size,
+          bookmarks: bookmarksSnap.size,
         });
       } catch (error) {
         console.error('Error fetching stats:', error);
       }
     };
-
     fetchStats();
   }, [currentUser]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    // Auto-uppercase for USN
     if (name === 'collegeUSN') {
       setFormData({ ...formData, [name]: value.toUpperCase() });
     } else {
@@ -85,21 +74,17 @@ const UserProfile = () => {
     setLoading(true);
 
     try {
-      // Validation
-      if (userProfile.role === 'student') {
-        // Validate USN starts with 3GN
+      if (isStudent) {
         if (!formData.collegeUSN.startsWith('3GN')) {
-          toast.error('Invalid USN! Student USN must start with "3GN"');
+          toast.error('Invalid USN! Must start with "3GN"');
           setLoading(false);
           return;
         }
-
         if (formData.collegeUSN.length !== 10) {
-          toast.error('Invalid USN format! USN should be 10 characters');
+          toast.error('USN must be 10 characters (e.g., 3GN21IS001)');
           setLoading(false);
           return;
         }
-
         if (!formData.year) {
           toast.error('Please select your year');
           setLoading(false);
@@ -107,7 +92,7 @@ const UserProfile = () => {
         }
       }
 
-      if (userProfile.role === 'professor') {
+      if (isProfessor) {
         if (!formData.collegeID || formData.collegeID.trim().length < 4) {
           toast.error('College ID must be at least 4 characters');
           setLoading(false);
@@ -115,27 +100,21 @@ const UserProfile = () => {
         }
       }
 
-      // Update Firestore
-      const userRef = doc(db, 'users', currentUser.uid);
       const updateData = {
         name: formData.name,
         department: formData.department,
       };
 
-      // Add role-specific fields
-      if (userProfile.role === 'student') {
+      if (isStudent) {
         updateData.collegeUSN = formData.collegeUSN;
         updateData.year = formData.year;
       } else {
         updateData.collegeID = formData.collegeID;
       }
 
-      await updateDoc(userRef, updateData);
-      
+      await updateDoc(doc(db, 'users', currentUser.uid), updateData);
       toast.success('Profile updated successfully!');
       setIsEditing(false);
-      
-      // Reload page to refresh userProfile from context
       setTimeout(() => window.location.reload(), 1000);
     } catch (error) {
       console.error('Error updating profile:', error);
@@ -156,23 +135,21 @@ const UserProfile = () => {
     setIsEditing(false);
   };
 
-  const isStudent = userProfile?.role === 'student';
-  const isProfessor = userProfile?.role === 'professor';
-
   return (
     <Layout>
       <div className="max-w-4xl mx-auto">
+
         {/* Header */}
         <div className="bg-gradient-to-r from-purple-600 to-teal-500 rounded-xl p-8 mb-6 text-white">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-4">
             <div className="flex items-center gap-4">
-              <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center text-purple-600 text-3xl font-bold">
+              <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center text-purple-600 text-3xl font-bold shadow-lg">
                 {userProfile?.name?.charAt(0) || 'U'}
               </div>
               <div>
                 <h1 className="text-3xl font-bold">{userProfile?.name}</h1>
                 <p className="text-purple-100 mt-1">
-                  {isProfessor ? '👨‍🏫 Professor' : '🎓 Student'} • {userProfile?.department}
+                  {getRoleLabel()} • {userProfile?.department}
                 </p>
               </div>
             </div>
@@ -193,10 +170,11 @@ const UserProfile = () => {
           <h2 className="text-2xl font-bold text-gray-800 mb-6">Profile Information</h2>
 
           {!isEditing ? (
-            // View Mode
-            <div className="space-y-6">
+            // ── View Mode ──
+            <div className="space-y-4">
+
               <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
-                <User className="w-6 h-6 text-purple-600" />
+                <User className="w-6 h-6 text-purple-600 flex-shrink-0" />
                 <div>
                   <p className="text-sm text-gray-500">Full Name</p>
                   <p className="text-lg font-semibold text-gray-800">{userProfile?.name}</p>
@@ -204,36 +182,46 @@ const UserProfile = () => {
               </div>
 
               <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
-                <Mail className="w-6 h-6 text-purple-600" />
+                <Mail className="w-6 h-6 text-purple-600 flex-shrink-0" />
                 <div>
                   <p className="text-sm text-gray-500">Email Address</p>
                   <p className="text-lg font-semibold text-gray-800">{currentUser?.email}</p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
-                <Hash className="w-6 h-6 text-purple-600" />
-                <div>
-                  <p className="text-sm text-gray-500">
-                    {isStudent ? 'College USN' : 'College ID'}
-                  </p>
-                  <p className="text-lg font-semibold text-gray-800">
-                    {isStudent ? userProfile?.collegeUSN : userProfile?.collegeID}
-                  </p>
+              {/* ── USN or College ID based on actual Firestore data ── */}
+              {isStudent && (
+                <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
+                  <Hash className="w-6 h-6 text-purple-600 flex-shrink-0" />
+                  <div>
+                    <p className="text-sm text-gray-500">College USN</p>
+                    <p className="text-lg font-semibold text-gray-800">{userProfile?.collegeUSN}</p>
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {isProfessor && (
+                <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
+                  <Hash className="w-6 h-6 text-purple-600 flex-shrink-0" />
+                  <div>
+                    <p className="text-sm text-gray-500">College ID</p>
+                    <p className="text-lg font-semibold text-gray-800">{userProfile?.collegeID}</p>
+                  </div>
+                </div>
+              )}
 
               <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
-                <Building2 className="w-6 h-6 text-purple-600" />
+                <Building2 className="w-6 h-6 text-purple-600 flex-shrink-0" />
                 <div>
                   <p className="text-sm text-gray-500">Department</p>
                   <p className="text-lg font-semibold text-gray-800">{userProfile?.department}</p>
                 </div>
               </div>
 
-              {isStudent && (
+              {/* Year — only for students and only if not N/A */}
+              {isStudent && userProfile?.year && userProfile.year !== 'N/A' && (
                 <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
-                  <GraduationCap className="w-6 h-6 text-purple-600" />
+                  <GraduationCap className="w-6 h-6 text-purple-600 flex-shrink-0" />
                   <div>
                     <p className="text-sm text-gray-500">Year</p>
                     <p className="text-lg font-semibold text-gray-800">{userProfile?.year}</p>
@@ -241,23 +229,22 @@ const UserProfile = () => {
                 </div>
               )}
 
+              {/* Role */}
               <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
-                <User className="w-6 h-6 text-purple-600" />
+                <Shield className="w-6 h-6 text-purple-600 flex-shrink-0" />
                 <div>
                   <p className="text-sm text-gray-500">Role</p>
-                  <p className="text-lg font-semibold text-gray-800">
-                    {isProfessor ? 'Professor' : 'Student'}
-                  </p>
+                  <p className="text-lg font-semibold text-gray-800">{getRoleLabel()}</p>
                 </div>
               </div>
+
             </div>
           ) : (
-            // Edit Mode
+            // ── Edit Mode ──
             <form onSubmit={handleSubmit} className="space-y-4">
+
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Full Name
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
                 <div className="relative">
                   <User className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
                   <input
@@ -286,34 +273,48 @@ const UserProfile = () => {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {isStudent ? 'College USN' : 'College ID'}
-                </label>
-                <div className="relative">
-                  <Hash className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
-                  <input
-                    type="text"
-                    name={isStudent ? 'collegeUSN' : 'collegeID'}
-                    value={isStudent ? formData.collegeUSN : formData.collegeID}
-                    onChange={handleChange}
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent uppercase"
-                    placeholder={isStudent ? '3GN21IS001' : 'PROF001'}
-                    required
-                  />
+              {/* USN for students (including promoted admins who were students) */}
+              {isStudent && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">College USN</label>
+                  <div className="relative">
+                    <Hash className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
+                    <input
+                      type="text"
+                      name="collegeUSN"
+                      value={formData.collegeUSN}
+                      onChange={handleChange}
+                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent uppercase"
+                      placeholder="3GN21IS001"
+                      required
+                    />
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">ⓘ USN must start with "3GN" (GNDEC Bidar code)</p>
                 </div>
-                {isStudent && (
-                  <p className="text-xs text-gray-500 mt-1">
-                    ⓘ USN must start with "3GN" (GNDEC Bidar code)
-                  </p>
-                )}
-              </div>
+              )}
+
+              {/* College ID for professors */}
+              {isProfessor && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">College ID</label>
+                  <div className="relative">
+                    <Hash className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
+                    <input
+                      type="text"
+                      name="collegeID"
+                      value={formData.collegeID}
+                      onChange={handleChange}
+                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent uppercase"
+                      placeholder="PROF001"
+                      required
+                    />
+                  </div>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Department
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
                   <select
                     name="department"
                     value={formData.department}
@@ -330,9 +331,7 @@ const UserProfile = () => {
 
                 {isStudent && (
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Year
-                    </label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Year</label>
                     <select
                       name="year"
                       value={formData.year}
@@ -386,7 +385,7 @@ const UserProfile = () => {
             <p className="text-3xl font-bold text-green-600">{stats.bookmarks}</p>
             <p className="text-gray-600 mt-1">Bookmarks</p>
           </div>
-        </div> 
+        </div>
       </div>
     </Layout>
   );
