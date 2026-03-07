@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import {
   doc, getDoc, updateDoc, increment, addDoc, collection,
-  query, where, getDocs, deleteDoc, serverTimestamp
+  query, where, getDocs, deleteDoc, serverTimestamp, limit, orderBy
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { toast } from 'react-toastify';
@@ -29,6 +29,7 @@ const NoteDetail = () => {
   const [downloading, setDownloading] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [relatedNotes, setRelatedNotes] = useState([]);
 
   const isAdmin = ['admin', 'super_admin'].includes(userProfile?.role?.trim());
 
@@ -47,7 +48,7 @@ const NoteDetail = () => {
         const noteData = { id: noteDoc.id, ...noteDoc.data() };
         setNote(noteData);
 
-        // ── Save to recently viewed (localStorage, free) ──
+        // Save to recently viewed
         saveRecentlyViewed({
           id: noteData.id,
           title: noteData.title,
@@ -60,6 +61,9 @@ const NoteDetail = () => {
         });
 
         await updateDoc(doc(db, 'notes', noteId), { views: increment(1) });
+
+        // Fetch related notes after we have the note data
+        fetchRelatedNotes(noteData);
       } else {
         toast.error('Note not found');
         navigate('/dashboard');
@@ -72,6 +76,55 @@ const NoteDetail = () => {
     }
   };
 
+  // ── Related Notes: same subject first, fill rest with same dept+sem ──
+  const fetchRelatedNotes = async (currentNote) => {
+    try {
+      const MAX = 4;
+      const seen = new Set([currentNote.id]);
+      let related = [];
+
+      // Step 1: same subject
+      if (currentNote.subject) {
+        const subjectSnap = await getDocs(
+          query(
+            collection(db, 'notes'),
+            where('subject', '==', currentNote.subject),
+            where('status', '!=', 'hidden'),
+            limit(MAX + 1)
+          )
+        );
+        subjectSnap.docs.forEach(d => {
+          if (!seen.has(d.id) && related.length < MAX) {
+            seen.add(d.id);
+            related.push({ id: d.id, ...d.data(), _matchReason: 'Same Subject' });
+          }
+        });
+      }
+
+      // Step 2: fill remaining slots with same department + semester
+      if (related.length < MAX && currentNote.department) {
+        const deptSnap = await getDocs(
+          query(
+            collection(db, 'notes'),
+            where('department', '==', currentNote.department),
+            where('semester', '==', currentNote.semester),
+            limit(MAX * 2)
+          )
+        );
+        deptSnap.docs.forEach(d => {
+          if (!seen.has(d.id) && related.length < MAX && d.data().status !== 'hidden') {
+            seen.add(d.id);
+            related.push({ id: d.id, ...d.data(), _matchReason: 'Same Department' });
+          }
+        });
+      }
+
+      setRelatedNotes(related);
+    } catch (err) {
+      console.error('Error fetching related notes:', err);
+    }
+  };
+
   const checkUserVote = async () => {
     try {
       const votesQuery = query(
@@ -81,9 +134,7 @@ const NoteDetail = () => {
       );
       const voteSnapshot = await getDocs(votesQuery);
       if (!voteSnapshot.empty) setUserVote(voteSnapshot.docs[0].data().voteType);
-    } catch (error) {
-      console.error('Error checking vote:', error);
-    }
+    } catch (error) { console.error('Error checking vote:', error); }
   };
 
   const checkBookmark = async () => {
@@ -95,9 +146,7 @@ const NoteDetail = () => {
       );
       const bookmarkSnapshot = await getDocs(bookmarksQuery);
       setIsBookmarked(!bookmarkSnapshot.empty);
-    } catch (error) {
-      console.error('Error checking bookmark:', error);
-    }
+    } catch (error) { console.error('Error checking bookmark:', error); }
   };
 
   const handleVote = async (voteType) => {
@@ -109,7 +158,6 @@ const NoteDetail = () => {
         where('noteId', '==', noteId)
       );
       const voteSnapshot = await getDocs(votesQuery);
-
       if (!voteSnapshot.empty) {
         const existingVote = voteSnapshot.docs[0];
         const existingVoteType = existingVote.data().voteType;
@@ -131,10 +179,7 @@ const NoteDetail = () => {
         }
       } else {
         await addDoc(collection(db, 'votes'), {
-          userId: currentUser.uid,
-          noteId,
-          voteType,
-          createdAt: new Date()
+          userId: currentUser.uid, noteId, voteType, createdAt: new Date()
         });
         await updateDoc(doc(db, 'notes', noteId), {
           [voteType === 'upvote' ? 'upvotes' : 'downvotes']: increment(1)
@@ -156,12 +201,9 @@ const NoteDetail = () => {
     try {
       toast.info('⏳ Preparing your download...');
       await addDoc(collection(db, 'downloads'), {
-        userId: currentUser.uid,
-        noteId,
-        downloadedAt: serverTimestamp()
+        userId: currentUser.uid, noteId, downloadedAt: serverTimestamp()
       });
       await updateDoc(doc(db, 'notes', noteId), { downloads: increment(1) });
-
       const getFileExtension = () => {
         if (note.fileType) {
           const mimeToExt = {
@@ -170,49 +212,36 @@ const NoteDetail = () => {
             'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
             'application/vnd.ms-excel': 'xls',
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
-            'image/jpeg': 'jpg',
-            'image/png': 'png',
+            'image/jpeg': 'jpg', 'image/png': 'png',
           };
           return mimeToExt[note.fileType] || 'pdf';
         }
         return 'pdf';
       };
-
-      const fileExtension = getFileExtension();
-      const fileName = `${note.title.replace(/[^a-z0-9\s]/gi, '_').replace(/\s+/g, '_')}.${fileExtension}`;
-
+      const fileName = `${note.title.replace(/[^a-z0-9\s]/gi, '_').replace(/\s+/g, '_')}.${getFileExtension()}`;
       try {
         const response = await fetch(note.fileURL);
         if (response.ok) {
           const blob = await response.blob();
           try {
             await saveFileOffline(noteId, blob, {
-              title: note.title, subject: note.subject,
-              department: note.department, semester: note.semester,
-              fileSize: blob.size, fileType: blob.type || note.fileType,
-              uploaderName: note.uploaderName
+              title: note.title, subject: note.subject, department: note.department,
+              semester: note.semester, fileSize: blob.size,
+              fileType: blob.type || note.fileType, uploaderName: note.uploaderName
             });
-          } catch (offlineError) {
-            console.warn('Could not save for offline:', offlineError);
-          }
+          } catch (offlineError) { console.warn('Could not save for offline:', offlineError); }
           const url = window.URL.createObjectURL(blob);
           const link = document.createElement('a');
-          link.href = url;
-          link.download = fileName;
-          link.style.display = 'none';
-          document.body.appendChild(link);
-          link.click();
+          link.href = url; link.download = fileName; link.style.display = 'none';
+          document.body.appendChild(link); link.click();
           setTimeout(() => { document.body.removeChild(link); window.URL.revokeObjectURL(url); }, 100);
           toast.success('✅ Downloaded successfully! Saved for offline access.');
         } else throw new Error('Download failed');
       } catch (fetchError) {
         const link = document.createElement('a');
-        link.href = note.fileURL;
-        link.download = fileName;
-        link.target = '_blank';
-        link.rel = 'noopener noreferrer';
-        document.body.appendChild(link);
-        link.click();
+        link.href = note.fileURL; link.download = fileName;
+        link.target = '_blank'; link.rel = 'noopener noreferrer';
+        document.body.appendChild(link); link.click();
         document.body.removeChild(link);
         toast.success('✅ Download started!');
       }
@@ -220,9 +249,7 @@ const NoteDetail = () => {
     } catch (error) {
       console.error('Error during download:', error);
       toast.error('Download failed. Please try again.');
-    } finally {
-      setDownloading(false);
-    }
+    } finally { setDownloading(false); }
   };
 
   const handleBookmark = async () => {
@@ -240,9 +267,7 @@ const NoteDetail = () => {
         toast.info('Bookmark removed');
       } else {
         await addDoc(collection(db, 'bookmarks'), {
-          userId: currentUser.uid,
-          noteId,
-          createdAt: new Date()
+          userId: currentUser.uid, noteId, createdAt: new Date()
         });
         setIsBookmarked(true);
         toast.success('Bookmarked!');
@@ -255,17 +280,12 @@ const NoteDetail = () => {
 
   const handleShare = async () => {
     const shareUrl = window.location.href;
-    const shareText = `Check out this note: ${note.title} - ${note.subject}`;
     if (navigator.share) {
       try {
-        await navigator.share({ title: note.title, text: shareText, url: shareUrl });
+        await navigator.share({ title: note.title, text: `Check out: ${note.title}`, url: shareUrl });
         toast.success('Shared successfully!');
-      } catch (error) {
-        if (error.name !== 'AbortError') copyToClipboard(shareUrl);
-      }
-    } else {
-      copyToClipboard(shareUrl);
-    }
+      } catch (error) { if (error.name !== 'AbortError') copyToClipboard(shareUrl); }
+    } else { copyToClipboard(shareUrl); }
   };
 
   const copyToClipboard = async (text) => {
@@ -274,9 +294,7 @@ const NoteDetail = () => {
       toast.success('📋 Link copied to clipboard!');
     } catch {
       const textArea = document.createElement('textarea');
-      textArea.value = text;
-      document.body.appendChild(textArea);
-      textArea.select();
+      textArea.value = text; document.body.appendChild(textArea); textArea.select();
       try { document.execCommand('copy'); toast.success('📋 Link copied to clipboard!'); }
       catch { toast.error('Failed to copy link'); }
       document.body.removeChild(textArea);
@@ -288,8 +306,7 @@ const NoteDetail = () => {
     setDeleting(true);
     try {
       await deleteDoc(doc(db, 'notes', noteId));
-      const reportsQuery = query(collection(db, 'reports'), where('noteId', '==', noteId));
-      const reportsSnap = await getDocs(reportsQuery);
+      const reportsSnap = await getDocs(query(collection(db, 'reports'), where('noteId', '==', noteId)));
       for (const reportDoc of reportsSnap.docs) {
         await updateDoc(reportDoc.ref, {
           status: 'resolved', action: 'deleted',
@@ -301,30 +318,24 @@ const NoteDetail = () => {
         actionType: 'delete_note', performedBy: currentUser.uid,
         performedByName: userProfile?.name || 'Admin',
         targetId: noteId, targetName: note.title,
-        reason: 'Admin deletion from note detail page',
-        timestamp: serverTimestamp(),
+        reason: 'Admin deletion from note detail page', timestamp: serverTimestamp(),
       });
       toast.success('✅ Note deleted successfully');
       navigate('/dashboard');
     } catch (error) {
       console.error('Admin delete error:', error);
       toast.error('Failed to delete note');
-    } finally {
-      setDeleting(false);
-    }
+    } finally { setDeleting(false); }
   };
 
   const handleAdminRestore = async () => {
     try {
-      await updateDoc(doc(db, 'notes', noteId), {
-        status: 'active', reportCount: 0, reportedBy: [],
-      });
+      await updateDoc(doc(db, 'notes', noteId), { status: 'active', reportCount: 0, reportedBy: [] });
       await addDoc(collection(db, 'adminLogs'), {
         actionType: 'restore_note', performedBy: currentUser.uid,
         performedByName: userProfile?.name || 'Admin',
         targetId: noteId, targetName: note.title,
-        reason: 'Admin restored from note detail page',
-        timestamp: serverTimestamp(),
+        reason: 'Admin restored from note detail page', timestamp: serverTimestamp(),
       });
       toast.success('✅ Note restored successfully');
       fetchNoteDetails();
@@ -347,9 +358,7 @@ const NoteDetail = () => {
   if (!note) {
     return (
       <Layout>
-        <div className="text-center py-12">
-          <p className="text-gray-600">Note not found</p>
-        </div>
+        <div className="text-center py-12"><p className="text-gray-600">Note not found</p></div>
       </Layout>
     );
   }
@@ -357,20 +366,54 @@ const NoteDetail = () => {
   const isPDF = note.fileType === 'application/pdf';
   const isHidden = note.status === 'hidden';
 
+  // ── Related Note Card ────────────────────────────────────────
+  const RelatedNoteCard = ({ rNote }) => (
+    <div
+      onClick={() => navigate(`/notes/${rNote.id}`)}
+      className="bg-white rounded-xl border border-gray-100 hover:border-purple-300 hover:shadow-lg transition-all p-4 cursor-pointer group"
+    >
+      <div className="flex items-start gap-3">
+        <div className="bg-gradient-to-br from-purple-400 to-blue-500 p-2.5 rounded-lg flex-shrink-0">
+          <FileText className="w-5 h-5 text-white" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h4 className="font-semibold text-gray-800 text-sm group-hover:text-purple-600 transition-colors line-clamp-2 leading-snug">
+            {rNote.title}
+          </h4>
+          <p className="text-xs text-gray-500 truncate mt-0.5">{rNote.subject}</p>
+        </div>
+      </div>
+      <div className="flex items-center gap-1.5 mt-3 flex-wrap">
+        <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-xs rounded-full">{rNote.department}</span>
+        <span className="px-2 py-0.5 bg-purple-50 text-purple-600 text-xs rounded-full">Sem {rNote.semester}</span>
+        <span className={`px-2 py-0.5 text-xs rounded-full ml-auto ${
+          rNote._matchReason === 'Same Subject'
+            ? 'bg-green-50 text-green-600'
+            : 'bg-orange-50 text-orange-600'
+        }`}>
+          {rNote._matchReason === 'Same Subject' ? '📚 Same Subject' : '🏛️ Same Dept'}
+        </span>
+      </div>
+      <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
+        <span className="flex items-center gap-1"><ThumbsUp className="w-3 h-3" />{rNote.upvotes || 0}</span>
+        <span className="flex items-center gap-1"><Eye className="w-3 h-3" />{rNote.views || 0}</span>
+        <span className="flex items-center gap-1"><Download className="w-3 h-3" />{rNote.downloads || 0}</span>
+      </div>
+    </div>
+  );
+
   return (
     <Layout>
       <div className="max-w-7xl mx-auto">
 
-        {/* Admin banner for hidden files */}
+        {/* Admin banner */}
         {isHidden && isAdmin && (
           <div className="mb-4 p-4 bg-orange-50 border-2 border-orange-300 rounded-xl flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-3">
               <ShieldAlert className="w-6 h-6 text-orange-600 flex-shrink-0" />
               <div>
                 <p className="font-bold text-orange-800">Admin View — File Under Review</p>
-                <p className="text-sm text-orange-700">
-                  This file has been hidden after {note.reportCount || 5}+ reports.
-                </p>
+                <p className="text-sm text-orange-700">This file has been hidden after {note.reportCount || 5}+ reports.</p>
               </div>
             </div>
             <div className="flex gap-2">
@@ -391,7 +434,6 @@ const NoteDetail = () => {
           {/* Left: Preview */}
           <div className="lg:col-span-2">
             <div className="bg-white rounded-xl shadow-md overflow-hidden">
-
               {isHidden && !isAdmin ? (
                 <div className="bg-gradient-to-br from-gray-50 to-orange-50 p-12 min-h-[500px] flex items-center justify-center">
                   <div className="max-w-lg w-full text-center">
@@ -403,22 +445,15 @@ const NoteDetail = () => {
                     </div>
                     <div className="mb-6">
                       <h2 className="text-2xl font-bold text-gray-800 mb-3">File Under Review</h2>
-                      <p className="text-gray-600 mb-2">
-                        This file has been reported by multiple users and is currently under admin review.
-                      </p>
-                      <p className="text-gray-500 text-sm">
-                        If the file is found to be valid, it will be restored shortly.
-                      </p>
+                      <p className="text-gray-600 mb-2">This file has been reported and is under admin review.</p>
+                      <p className="text-gray-500 text-sm">If valid, it will be restored shortly.</p>
                     </div>
                     <div className="bg-orange-50 border-2 border-orange-200 rounded-xl p-5 text-left">
                       <div className="flex items-start gap-3">
                         <AlertTriangle className="w-5 h-5 text-orange-500 mt-0.5 flex-shrink-0" />
                         <div>
                           <p className="font-semibold text-orange-800 mb-1">Why is this hidden?</p>
-                          <p className="text-sm text-orange-700">
-                            Files are automatically hidden when 5+ users report them.
-                            Our admin team will review and either restore or remove it.
-                          </p>
+                          <p className="text-sm text-orange-700">Files are hidden when 5+ users report them. Admins will review and restore or remove it.</p>
                         </div>
                       </div>
                     </div>
@@ -443,38 +478,29 @@ const NoteDetail = () => {
                       <p className="text-xl text-gray-600 mb-2">{note.subject}</p>
                       <div className="flex items-center justify-center gap-3 text-sm text-gray-500 flex-wrap">
                         <span className="px-3 py-1 bg-white rounded-full shadow-sm">📄 PDF Document</span>
-                        <span className="px-3 py-1 bg-white rounded-full shadow-sm">
-                          💾 {(note.fileSize / 1024 / 1024).toFixed(2)} MB
-                        </span>
-                        {note.professor && (
-                          <span className="px-3 py-1 bg-white rounded-full shadow-sm">👨‍🏫 {note.professor}</span>
-                        )}
+                        <span className="px-3 py-1 bg-white rounded-full shadow-sm">💾 {(note.fileSize / 1024 / 1024).toFixed(2)} MB</span>
+                        {note.professor && <span className="px-3 py-1 bg-white rounded-full shadow-sm">👨‍🏫 {note.professor}</span>}
                       </div>
                     </div>
                     <div className="mb-8 space-y-3">
                       <button onClick={() => setShowPreview(true)}
-                        className="group relative w-full bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-600 text-white px-8 py-6 rounded-2xl font-bold hover:shadow-2xl flex items-center justify-center gap-3 text-xl shadow-xl transition-all transform hover:scale-105 active:scale-100 overflow-hidden"
-                      >
-                        <Eye className="w-7 h-7 z-10" />
-                        <span className="z-10">Preview PDF</span>
-                      </button>
+                        className="w-full bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-600 text-white px-8 py-6 rounded-2xl font-bold hover:shadow-2xl flex items-center justify-center gap-3 text-xl shadow-xl transition-all transform hover:scale-105"
+                      ><Eye className="w-7 h-7" /> Preview PDF</button>
                       <button onClick={handleDownload} disabled={downloading}
-                        className="group relative w-full bg-gradient-to-r from-purple-600 via-purple-700 to-blue-600 text-white px-8 py-6 rounded-2xl font-bold hover:shadow-2xl flex items-center justify-center gap-3 text-xl shadow-xl transition-all transform hover:scale-105 active:scale-100 disabled:opacity-70 disabled:cursor-not-allowed overflow-hidden"
+                        className="w-full bg-gradient-to-r from-purple-600 via-purple-700 to-blue-600 text-white px-8 py-6 rounded-2xl font-bold hover:shadow-2xl flex items-center justify-center gap-3 text-xl shadow-xl transition-all transform hover:scale-105 disabled:opacity-70 disabled:cursor-not-allowed"
                       >
-                        <Download className={`w-7 h-7 z-10 ${downloading ? 'animate-bounce' : ''}`} />
-                        <span className="z-10">{downloading ? 'Downloading...' : 'Download PDF'}</span>
+                        <Download className={`w-7 h-7 ${downloading ? 'animate-bounce' : ''}`} />
+                        {downloading ? 'Downloading...' : 'Download PDF'}
                       </button>
                     </div>
-                    <div className="bg-white bg-opacity-60 backdrop-blur-sm rounded-xl p-6 border border-white shadow-lg">
+                    <div className="bg-white bg-opacity-60 rounded-xl p-6 border border-white shadow-lg">
                       <div className="flex items-start gap-3 text-left">
                         <div className="bg-blue-100 rounded-full p-2 mt-0.5 flex-shrink-0">
                           <Eye className="w-5 h-5 text-blue-600" />
                         </div>
                         <div>
                           <h4 className="font-semibold text-gray-800 mb-1">Preview Before Download</h4>
-                          <p className="text-sm text-gray-600">
-                            Click "Preview PDF" to view in browser, or "Download PDF" to save for offline access.
-                          </p>
+                          <p className="text-sm text-gray-600">Click "Preview PDF" to view in browser, or "Download PDF" to save for offline access.</p>
                         </div>
                       </div>
                     </div>
@@ -482,18 +508,14 @@ const NoteDetail = () => {
                 </div>
 
               ) : (
-                <div className="relative bg-gradient-to-br from-gray-50 to-gray-100 p-12 min-h-[600px] flex items-center justify-center">
+                <div className="bg-gradient-to-br from-gray-50 to-gray-100 p-12 min-h-[600px] flex items-center justify-center">
                   <div className="max-w-lg w-full text-center">
-                    <div className="relative mb-8">
-                      <div className="bg-white rounded-full w-40 h-40 flex items-center justify-center mx-auto shadow-2xl">
-                        <FileText className="w-20 h-20 text-gray-400" />
-                      </div>
+                    <div className="bg-white rounded-full w-40 h-40 flex items-center justify-center mx-auto shadow-2xl mb-8">
+                      <FileText className="w-20 h-20 text-gray-400" />
                     </div>
-                    <div className="mb-8">
-                      <h2 className="text-3xl font-bold text-gray-800 mb-3">{note.title}</h2>
-                      <p className="text-xl text-gray-600 mb-4">{note.subject}</p>
-                      <p className="text-gray-500">This file type doesn't support inline preview</p>
-                    </div>
+                    <h2 className="text-3xl font-bold text-gray-800 mb-3">{note.title}</h2>
+                    <p className="text-xl text-gray-600 mb-4">{note.subject}</p>
+                    <p className="text-gray-500 mb-8">This file type doesn't support inline preview</p>
                     <button onClick={handleDownload} disabled={downloading}
                       className="w-full bg-gradient-to-r from-purple-600 to-blue-600 text-white px-8 py-6 rounded-2xl font-bold hover:shadow-2xl flex items-center justify-center gap-3 text-xl shadow-xl transition-all transform hover:scale-105 disabled:opacity-70"
                     >
@@ -504,12 +526,28 @@ const NoteDetail = () => {
                 </div>
               )}
             </div>
+
+            {/* ── RELATED NOTES ── */}
+            {relatedNotes.length > 0 && (
+              <div className="mt-6">
+                <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+                  🔗 You Might Also Like
+                  <span className="text-sm font-normal text-gray-500">
+                    — based on {note.subject}
+                  </span>
+                </h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {relatedNotes.map(rNote => (
+                    <RelatedNoteCard key={rNote.id} rNote={rNote} />
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Right: Details */}
           <div className="lg:col-span-1">
             <div className="bg-white rounded-xl shadow-md p-6 sticky top-6">
-
               {isAdmin && (
                 <div className="mb-5 pb-5 border-b-2 border-dashed border-red-200">
                   <p className="text-xs font-bold text-red-500 uppercase tracking-wider mb-2 flex items-center gap-1">
@@ -544,8 +582,8 @@ const NoteDetail = () => {
               <div className="flex flex-wrap gap-2 mb-4">
                 <span className="px-3 py-1 bg-blue-100 text-blue-700 text-sm font-medium rounded-full">{note.department}</span>
                 <span className="px-3 py-1 bg-purple-100 text-purple-700 text-sm font-medium rounded-full">Sem {note.semester}</span>
-                {note.tags?.map((tag, index) => (
-                  <span key={index} className="px-3 py-1 bg-gray-100 text-gray-700 text-sm rounded-full">{tag}</span>
+                {note.tags?.map((tag, i) => (
+                  <span key={i} className="px-3 py-1 bg-gray-100 text-gray-700 text-sm rounded-full">{tag}</span>
                 ))}
               </div>
 
@@ -573,7 +611,7 @@ const NoteDetail = () => {
               </div>
 
               <div className="grid grid-cols-3 gap-3 mb-6">
-                <div className="text-center p-3 bg-transparent rounded-lg">
+                <div className="text-center p-3 rounded-lg">
                   <Eye className="w-5 h-5 text-gray-600 mx-auto mb-1" />
                   <p className="text-lg font-bold text-gray-800">{note.views || 0}</p>
                   <p className="text-xs text-gray-600">Views</p>
@@ -595,16 +633,12 @@ const NoteDetail = () => {
                   className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-semibold transition-all ${
                     userVote === 'upvote' ? 'bg-green-500 text-white' : 'bg-green-50 text-green-700 hover:bg-green-100'
                   } disabled:opacity-40 disabled:cursor-not-allowed`}
-                >
-                  <ThumbsUp className="w-5 h-5" /> Upvote
-                </button>
+                ><ThumbsUp className="w-5 h-5" /> Upvote</button>
                 <button onClick={() => handleVote('downvote')} disabled={isHidden && !isAdmin}
                   className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-semibold transition-all ${
                     userVote === 'downvote' ? 'bg-red-500 text-white' : 'bg-red-50 text-red-700 hover:bg-red-100'
                   } disabled:opacity-40 disabled:cursor-not-allowed`}
-                >
-                  <ThumbsDown className="w-5 h-5" /> Downvote
-                </button>
+                ><ThumbsDown className="w-5 h-5" /> Downvote</button>
               </div>
 
               <div className="grid grid-cols-2 gap-3 mb-4">
@@ -612,15 +646,10 @@ const NoteDetail = () => {
                   className={`flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
                     isBookmarked ? 'bg-yellow-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                   }`}
-                >
-                  <Bookmark className="w-4 h-4" />
-                  {isBookmarked ? 'Saved' : 'Save'}
-                </button>
+                ><Bookmark className="w-4 h-4" />{isBookmarked ? 'Saved' : 'Save'}</button>
                 <button onClick={handleShare}
                   className="flex items-center justify-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-colors"
-                >
-                  <Share2 className="w-4 h-4" /> Share
-                </button>
+                ><Share2 className="w-4 h-4" /> Share</button>
               </div>
 
               {!isHidden && (
@@ -640,28 +669,26 @@ const NoteDetail = () => {
                 <FileText className="w-6 h-6 text-white" />
                 <div>
                   <h3 className="text-lg font-bold text-white">{note.title}</h3>
-                  <p className="text-sm text-white text-opacity-90">{note.subject}</p>
+                  <p className="text-sm text-white opacity-90">{note.subject}</p>
                 </div>
               </div>
               <button onClick={() => setShowPreview(false)}
                 className="p-2 hover:bg-white hover:bg-opacity-20 rounded-lg transition-colors"
-              >
-                <X className="w-6 h-6 text-white" />
-              </button>
+              ><X className="w-6 h-6 text-white" /></button>
             </div>
             <div className="flex-1 overflow-hidden">
               <iframe src={note.fileURL} className="w-full h-full" title={note.title} />
             </div>
             <div className="p-4 border-t flex items-center justify-between">
               <div className="text-sm text-gray-600">
-                <span className="font-medium">{(note.fileSize / 1024 / 1024).toFixed(2)} MB</span> • PDF Document
+                <span className="font-medium">{(note.fileSize / 1024 / 1024).toFixed(2)} MB</span> • PDF
               </div>
               <div className="flex gap-3">
                 <button onClick={() => setShowPreview(false)}
-                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium transition-colors"
+                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium"
                 >Close</button>
                 <button onClick={handleDownload} disabled={downloading}
-                  className="px-6 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg hover:shadow-lg font-medium transition-all flex items-center gap-2 disabled:opacity-70"
+                  className="px-6 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg hover:shadow-lg font-medium flex items-center gap-2 disabled:opacity-70"
                 >
                   <Download className="w-4 h-4" />
                   {downloading ? 'Downloading...' : 'Download'}
