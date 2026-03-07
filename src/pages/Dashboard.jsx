@@ -4,7 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { collection, query, orderBy, limit, getDocs, where, doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
-import { TrendingUp, Clock, Users, Download, FileText, ThumbsUp, Eye, Filter, X, Star, ChevronRight } from 'lucide-react';
+import { TrendingUp, Clock, Users, Download, FileText, ThumbsUp, Eye, Filter, X, Star, ChevronRight, History, Trash2 } from 'lucide-react';
+import { getRecentlyViewed, clearRecentlyViewed } from '../utils/recentlyViewed';
 
 const SEMESTERS = [1, 2, 3, 4, 5, 6, 7, 8];
 
@@ -16,6 +17,7 @@ const Dashboard = () => {
   const [recentNotes, setRecentNotes] = useState([]);
   const [filteredNotes, setFilteredNotes] = useState([]);
   const [featuredNotes, setFeaturedNotes] = useState([]);
+  const [recentlyViewed, setRecentlyViewed] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filterLoading, setFilterLoading] = useState(false);
   const [selectedSemester, setSelectedSemester] = useState(null);
@@ -23,48 +25,36 @@ const Dashboard = () => {
   useEffect(() => {
     fetchDashboardData();
     fetchFeaturedNotes();
+    // Load recently viewed from localStorage (instant, no network)
+    setRecentlyViewed(getRecentlyViewed());
   }, []);
 
   useEffect(() => {
-    if (selectedSemester === null) {
-      setFilteredNotes(recentNotes);
-    } else {
-      fetchNotesBySemester(selectedSemester);
-    }
+    if (selectedSemester === null) setFilteredNotes(recentNotes);
+    else fetchNotesBySemester(selectedSemester);
   }, [selectedSemester, recentNotes]);
 
   const fetchFeaturedNotes = async () => {
     try {
       const snap = await getDoc(doc(db, 'featured', 'notes'));
       if (snap.exists()) setFeaturedNotes(snap.data().notes || []);
-    } catch (err) {
-      console.error('Error loading featured notes:', err);
-    }
+    } catch (err) { console.error('Error loading featured notes:', err); }
   };
 
   const fetchDashboardData = async () => {
     try {
-      const notesQuery = query(collection(db, 'notes'), orderBy('createdAt', 'desc'), limit(6));
-      const notesSnapshot = await getDocs(notesQuery);
+      const notesSnapshot = await getDocs(query(collection(db, 'notes'), orderBy('createdAt', 'desc'), limit(6)));
       const notesData = notesSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       setRecentNotes(notesData);
       setFilteredNotes(notesData);
 
       const allNotesSnapshot = await getDocs(collection(db, 'notes'));
       const usersSnapshot = await getDocs(collection(db, 'users'));
-
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
+      const today = new Date(); today.setHours(0, 0, 0, 0);
       const downloadsSnapshot = await getDocs(
         query(collection(db, 'downloads'), where('downloadedAt', '>=', today))
       );
-
-      setStats({
-        totalNotes: allNotesSnapshot.size,
-        activeUsers: usersSnapshot.size,
-        departments: 9,
-        downloadsToday: downloadsSnapshot.size,
-      });
+      setStats({ totalNotes: allNotesSnapshot.size, activeUsers: usersSnapshot.size, departments: 9, downloadsToday: downloadsSnapshot.size });
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
     } finally {
@@ -75,39 +65,23 @@ const Dashboard = () => {
   const fetchNotesBySemester = async (sem) => {
     setFilterLoading(true);
     try {
-      const snapStr = await getDocs(query(
-        collection(db, 'notes'),
-        where('semester', '==', String(sem)),
-        orderBy('createdAt', 'desc')
-      ));
-      const snapNum = await getDocs(query(
-        collection(db, 'notes'),
-        where('semester', '==', sem),
-        orderBy('createdAt', 'desc')
-      ));
-
-      const seen = new Set();
-      const merged = [];
+      const snapStr = await getDocs(query(collection(db, 'notes'), where('semester', '==', String(sem)), orderBy('createdAt', 'desc')));
+      const snapNum = await getDocs(query(collection(db, 'notes'), where('semester', '==', sem), orderBy('createdAt', 'desc')));
+      const seen = new Set(); const merged = [];
       [...snapStr.docs, ...snapNum.docs].forEach(d => {
-        if (!seen.has(d.id)) {
-          seen.add(d.id);
-          merged.push({ id: d.id, ...d.data() });
-        }
+        if (!seen.has(d.id)) { seen.add(d.id); merged.push({ id: d.id, ...d.data() }); }
       });
-      merged.sort((a, b) => {
-        const aT = a.createdAt?.toDate?.() || new Date(0);
-        const bT = b.createdAt?.toDate?.() || new Date(0);
-        return bT - aT;
-      });
+      merged.sort((a, b) => (b.createdAt?.toDate?.() || new Date(0)) - (a.createdAt?.toDate?.() || new Date(0)));
       setFilteredNotes(merged);
     } catch (error) {
-      console.error('Error fetching by semester:', error);
       const allSnap = await getDocs(collection(db, 'notes'));
-      const all = allSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setFilteredNotes(all.filter(n => String(n.semester) === String(sem)));
-    } finally {
-      setFilterLoading(false);
-    }
+      setFilteredNotes(allSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(n => String(n.semester) === String(sem)));
+    } finally { setFilterLoading(false); }
+  };
+
+  const handleClearHistory = () => {
+    clearRecentlyViewed();
+    setRecentlyViewed([]);
   };
 
   const handleSemesterClick = (sem) => setSelectedSemester(prev => prev === sem ? null : sem);
@@ -130,8 +104,7 @@ const Dashboard = () => {
   );
 
   const NoteCard = ({ note }) => (
-    <div
-      onClick={() => navigate(`/notes/${note.id}`)}
+    <div onClick={() => navigate(`/notes/${note.id}`)}
       className="bg-white rounded-lg shadow-md hover:shadow-xl transition-all p-5 cursor-pointer group"
     >
       <div className="flex items-start gap-3 mb-3">
@@ -159,22 +132,44 @@ const Dashboard = () => {
     </div>
   );
 
-  // ── Featured Note Card ──────────────────────────────────────
+  // Compact card for recently viewed (horizontal scroll on mobile)
+  const RecentlyViewedCard = ({ note }) => (
+    <div onClick={() => navigate(`/notes/${note.id}`)}
+      className="bg-white rounded-xl shadow-sm hover:shadow-md transition-all p-4 cursor-pointer group border border-gray-100 hover:border-purple-200 flex-shrink-0 w-52"
+    >
+      <div className="flex items-center gap-2 mb-2">
+        <div className="bg-gradient-to-br from-purple-400 to-blue-400 p-2 rounded-lg flex-shrink-0">
+          <FileText className="w-4 h-4 text-white" />
+        </div>
+        <div className="min-w-0">
+          <p className="font-semibold text-gray-800 text-sm truncate group-hover:text-purple-600 transition-colors">
+            {note.title}
+          </p>
+        </div>
+      </div>
+      <p className="text-xs text-gray-500 truncate mb-2">{note.subject}</p>
+      <div className="flex items-center gap-1.5">
+        <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-xs rounded-full">{note.department}</span>
+        <span className="px-2 py-0.5 bg-purple-50 text-purple-600 text-xs rounded-full">Sem {note.semester}</span>
+      </div>
+      <p className="text-xs text-gray-400 mt-2">
+        🕐 {new Date(note.viewedAt).toLocaleDateString()}
+      </p>
+    </div>
+  );
+
   const FeaturedCard = ({ note, index }) => (
-    <div
-      onClick={() => navigate(`/notes/${note.id}`)}
+    <div onClick={() => navigate(`/notes/${note.id}`)}
       className="relative cursor-pointer group flex-1 min-w-0"
     >
       <div className="bg-gradient-to-br from-yellow-400 via-orange-400 to-pink-500 p-0.5 rounded-2xl shadow-lg hover:shadow-xl transition-all">
         <div className="bg-white rounded-2xl p-5 h-full">
-          {/* Badge */}
           <div className="flex items-center gap-2 mb-3">
             <div className="flex items-center gap-1.5 bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-xs font-bold">
               <Star className="w-3.5 h-3.5 fill-yellow-500 text-yellow-500" />
               {index === 0 ? '⭐ Note of the Week' : '🌟 Featured Note'}
             </div>
           </div>
-
           <div className="flex items-start gap-3 mb-3">
             <div className="bg-gradient-to-br from-yellow-400 to-orange-500 p-3 rounded-xl flex-shrink-0">
               <FileText className="w-6 h-6 text-white" />
@@ -186,12 +181,10 @@ const Dashboard = () => {
               <p className="text-sm text-gray-500 truncate mt-0.5">{note.subject}</p>
             </div>
           </div>
-
           <div className="flex items-center gap-2 mb-3">
             <span className="px-2.5 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded-full">{note.department}</span>
             <span className="px-2.5 py-1 bg-purple-100 text-purple-700 text-xs font-medium rounded-full">Sem {note.semester}</span>
           </div>
-
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3 text-sm text-gray-500">
               <span className="flex items-center gap-1"><ThumbsUp className="w-4 h-4 text-green-500" />{note.upvotes || 0}</span>
@@ -228,20 +221,39 @@ const Dashboard = () => {
           <StatCard icon={Download} label="Downloads Today" value={stats.downloadsToday} color="bg-orange-500" />
         </div>
 
-        {/* ── FEATURED NOTES OF THE WEEK ── */}
+        {/* ── RECENTLY VIEWED ── */}
+        {recentlyViewed.length > 0 && (
+          <div className="mb-8">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
+                <History className="w-6 h-6 text-purple-500" />
+                Continue Where You Left Off
+              </h2>
+              <button onClick={handleClearHistory}
+                className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-red-500 transition-colors"
+              >
+                <Trash2 className="w-4 h-4" /> Clear History
+              </button>
+            </div>
+            {/* Horizontal scroll on mobile, wrap on desktop */}
+            <div className="flex gap-4 overflow-x-auto pb-2 sm:flex-wrap sm:overflow-visible">
+              {recentlyViewed.map(note => (
+                <RecentlyViewedCard key={note.id} note={note} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── FEATURED NOTES ── */}
         {featuredNotes.length > 0 && (
           <div className="mb-8">
             <div className="flex items-center gap-2 mb-4">
               <Star className="w-6 h-6 text-yellow-500 fill-yellow-400" />
               <h2 className="text-2xl font-bold text-gray-800">Note of the Week</h2>
-              <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-semibold ml-1">
-                Admin's Pick
-              </span>
+              <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-semibold ml-1">Admin's Pick</span>
             </div>
             <div className="flex flex-col sm:flex-row gap-4">
-              {featuredNotes.map((note, i) => (
-                <FeaturedCard key={note.id} note={note} index={i} />
-              ))}
+              {featuredNotes.map((note, i) => <FeaturedCard key={note.id} note={note} index={i} />)}
             </div>
           </div>
         )}
@@ -287,7 +299,7 @@ const Dashboard = () => {
           )}
         </div>
 
-        {/* ── FILTERED NOTES (when semester selected) ── */}
+        {/* ── FILTERED NOTES ── */}
         {selectedSemester !== null && (
           <div className="mb-8">
             <h2 className="text-2xl font-bold text-gray-800 mb-4">📖 Semester {selectedSemester} Notes</h2>
@@ -313,7 +325,7 @@ const Dashboard = () => {
           </div>
         )}
 
-        {/* ── TRENDING + RECENT (when no filter) ── */}
+        {/* ── TRENDING + RECENT ── */}
         {selectedSemester === null && (
           <>
             <div className="mb-8">
