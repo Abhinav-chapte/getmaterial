@@ -158,29 +158,46 @@ const MyDownloads = () => {
     setOfflineStatus(statusMap);
   };
 
-  // ── Open file: show in-app preview (never re-download) ──────────
+  // ── Open file: Spotify approach ──────────────────────────────────
   const handleOpenFile = async (note) => {
     const offlineFile = await getOfflineFile(note.id);
 
     if (offlineFile?.fileBlob) {
       try {
-        const mimeType = note.fileType || offlineFile.fileBlob.type || 'application/pdf';
+        const mimeType = note.fileType || offlineFile.fileBlob.type || 'application/octet-stream';
         const typedBlob = new Blob([offlineFile.fileBlob], { type: mimeType });
-        const url = URL.createObjectURL(typedBlob);
-        setPreviewFile({ url, title: note.title, type: mimeType });
-        toast.success('📂 Opening offline copy');
+        const blobUrl = URL.createObjectURL(typedBlob);
+
+        const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+        if (isMobile) {
+          // Mobile: open in new tab — Android/iOS opens with native PDF/Office viewer
+          const a = document.createElement('a');
+          a.href = blobUrl;
+          a.target = '_blank';
+          a.rel = 'noopener';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          setTimeout(() => URL.revokeObjectURL(blobUrl), 30000);
+          toast.success('Opening offline file...');
+        } else {
+          // Desktop: show in-app iframe preview
+          setPreviewFile({ url: blobUrl, title: note.title, type: mimeType });
+          toast.success('Opening offline copy');
+        }
         return;
       } catch (err) {
         console.error('Error opening offline blob:', err);
       }
     }
 
-    // Online fallback — open in new tab (view, not download)
+    // Online fallback
     if (isOnline && note.fileURL) {
       window.open(note.fileURL, '_blank');
-      toast.info('📡 Opening online version');
+      toast.info('Opening online version');
     } else {
-      toast.error('File not available offline. Please connect to internet to download it first.');
+      toast.error('File not available offline. Connect to internet and download it first.');
     }
   };
 
