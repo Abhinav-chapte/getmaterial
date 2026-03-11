@@ -198,56 +198,91 @@ const NoteDetail = () => {
     if (!currentUser) { toast.error('Please login to download'); return; }
     if (downloading) return;
     setDownloading(true);
+
+    const mimeToExt = {
+      'application/pdf': 'pdf',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
+      'application/vnd.ms-excel': 'xls',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+      'image/jpeg': 'jpg', 'image/png': 'png',
+    };
+    const ext = mimeToExt[note.fileType] || 'pdf';
+    const fileName = `${note.title.replace(/[^a-z0-9\s]/gi, '_').replace(/\s+/g, '_')}.${ext}`;
+
     try {
-      toast.info('⏳ Preparing your download...');
+      toast.info('⏳ Downloading & saving for offline...');
+
+      // Log to Firestore
       await addDoc(collection(db, 'downloads'), {
         userId: currentUser.uid, noteId, downloadedAt: serverTimestamp()
       });
       await updateDoc(doc(db, 'notes', noteId), { downloads: increment(1) });
-      const getFileExtension = () => {
-        if (note.fileType) {
-          const mimeToExt = {
-            'application/pdf': 'pdf',
-            'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
-            'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
-            'application/vnd.ms-excel': 'xls',
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
-            'image/jpeg': 'jpg', 'image/png': 'png',
-          };
-          return mimeToExt[note.fileType] || 'pdf';
-        }
-        return 'pdf';
-      };
-      const fileName = `${note.title.replace(/[^a-z0-9\s]/gi, '_').replace(/\s+/g, '_')}.${getFileExtension()}`;
+
+      // Fetch blob — strategy 1: direct, strategy 2: cloudinary fl_attachment
+      let blob = null;
       try {
-        const response = await fetch(note.fileURL);
-        if (response.ok) {
-          const blob = await response.blob();
-          try {
-            await saveFileOffline(noteId, blob, {
-              title: note.title, subject: note.subject, department: note.department,
-              semester: note.semester, fileSize: blob.size,
-              fileType: blob.type || note.fileType, uploaderName: note.uploaderName
-            });
-          } catch (offlineError) { console.warn('Could not save for offline:', offlineError); }
-          const url = window.URL.createObjectURL(blob);
-          const link = document.createElement('a');
-          link.href = url; link.download = fileName; link.style.display = 'none';
-          document.body.appendChild(link); link.click();
-          setTimeout(() => { document.body.removeChild(link); window.URL.revokeObjectURL(url); }, 100);
-          toast.success('✅ Downloaded successfully! Saved for offline access.');
-        } else throw new Error('Download failed');
-      } catch (fetchError) {
-        const link = document.createElement('a');
-        link.href = note.fileURL; link.download = fileName;
-        link.target = '_blank'; link.rel = 'noopener noreferrer';
-        document.body.appendChild(link); link.click();
-        document.body.removeChild(link);
-        toast.success('✅ Download started!');
+        const r = await fetch(note.fileURL, { mode: 'cors' });
+        if (r.ok) blob = await r.blob();
+        else throw new Error(`HTTP ${r.status}`);
+      } catch {
+        try {
+          const attachUrl = note.fileURL.includes('cloudinary.com')
+            ? note.fileURL.replace('/upload/', '/upload/fl_attachment/')
+            : note.fileURL;
+          const r2 = await fetch(attachUrl, { mode: 'cors' });
+          if (r2.ok) blob = await r2.blob();
+        } catch (e2) { console.warn('Both fetch strategies failed:', e2); }
       }
+
+      if (blob) {
+        // Ensure correct MIME type preserved on blob
+        const mimeType = note.fileType || blob.type || 'application/octet-stream';
+        const typedBlob = new Blob([blob], { type: mimeType });
+
+        // ── Save to IndexedDB (Spotify approach — available offline forever) ──
+        try {
+          await saveFileOffline(noteId, typedBlob, {
+            title: note.title,
+            subject: note.subject,
+            department: note.department,
+            semester: note.semester,
+            fileSize: typedBlob.size,
+            fileType: mimeType,
+            uploaderName: note.uploaderName,
+          });
+          toast.success('✅ Saved! Open in My Downloads even without internet.');
+        } catch (offlineErr) {
+          console.warn('IndexedDB save failed:', offlineErr);
+          toast.success('✅ Downloaded successfully!');
+        }
+
+        // Trigger device download
+        const blobUrl = window.URL.createObjectURL(typedBlob);
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = fileName;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => window.URL.revokeObjectURL(blobUrl), 3000);
+
+      } else {
+        // Fallback — direct link (won't save offline)
+        const link = document.createElement('a');
+        link.href = note.fileURL;
+        link.download = fileName;
+        link.target = '_blank';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        toast.warning('⚠️ Downloaded but could not save offline. Try on a stable connection.');
+      }
+
       fetchNoteDetails();
     } catch (error) {
-      console.error('Error during download:', error);
+      console.error('Download error:', error);
       toast.error('Download failed. Please try again.');
     } finally { setDownloading(false); }
   };
