@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import {
-  BookOpen, Rocket, Search, Upload, Home, Star, Clock,
+  BookOpen, Rocket, Search, Upload, Star, Clock,
   Download, Cloud, LogOut, Menu, X, User, Settings,
   Laptop, Cpu, Cog, Building, Zap, Brain, Database, Bot, FileText, Heart, Shield
 } from 'lucide-react';
@@ -54,6 +54,24 @@ const Layout = ({ children }) => {
   ];
 
   const isActive = (path) => location.pathname === path;
+
+  // ── Avatar: shows profile picture if set, else initial letter ──
+  const NavAvatar = () => {
+    if (userProfile?.profilePicture) {
+      return (
+        <img
+          src={userProfile.profilePicture}
+          alt={userProfile.name}
+          className="w-10 h-10 rounded-full object-cover border-2 border-purple-200"
+        />
+      );
+    }
+    return (
+      <div className="w-10 h-10 bg-gradient-to-r from-purple-500 to-teal-500 rounded-full flex items-center justify-center text-white font-bold">
+        {userProfile?.name?.charAt(0) || 'U'}
+      </div>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-transparent">
@@ -118,17 +136,18 @@ const Layout = ({ children }) => {
                   onClick={() => setProfileOpen(!profileOpen)}
                   className="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-100"
                 >
-                  <div className="w-10 h-10 bg-gradient-to-r from-purple-500 to-teal-500 rounded-full flex items-center justify-center text-white font-bold">
-                    {userProfile?.name?.charAt(0) || 'U'}
-                  </div>
+                  <NavAvatar />
                 </button>
 
                 {profileOpen && (
                   <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-50">
-                    <div className="px-4 py-3 border-b border-gray-200">
-                      <p className="font-semibold text-gray-800">{userProfile?.name}</p>
-                      <p className="text-sm text-gray-500">{userProfile?.department} • {userProfile?.year}</p>
-                      <p className="text-xs text-gray-400 mt-1">{currentUser?.email}</p>
+                    <div className="px-4 py-3 border-b border-gray-200 flex items-center gap-3">
+                      <NavAvatar />
+                      <div className="min-w-0">
+                        <p className="font-semibold text-gray-800 truncate">{userProfile?.name}</p>
+                        <p className="text-sm text-gray-500 truncate">{userProfile?.department} • {userProfile?.year}</p>
+                        <p className="text-xs text-gray-400 truncate">{currentUser?.email}</p>
+                      </div>
                     </div>
                     <Link
                       to="/dashboard/profile"
@@ -159,7 +178,6 @@ const Layout = ({ children }) => {
 
         {/* ── Mobile Search Bar + Upload Button row ── */}
         <div className="md:hidden px-3 pb-3 flex items-center gap-2">
-          {/* Search input */}
           <div className="relative flex-1">
             <Search className="absolute left-3 top-2.5 w-5 h-5 text-gray-400" />
             <input
@@ -182,8 +200,6 @@ const Layout = ({ children }) => {
               </button>
             )}
           </div>
-
-          {/* Upload button — icon + label, always visible on mobile */}
           <Link
             to="/dashboard/upload"
             className="flex items-center gap-1.5 bg-gradient-to-r from-purple-600 to-teal-500 text-white px-3 py-2.5 rounded-xl font-semibold text-sm whitespace-nowrap hover:shadow-lg transition-all flex-shrink-0"
@@ -202,7 +218,6 @@ const Layout = ({ children }) => {
           } fixed lg:static inset-y-0 left-0 z-40 w-64 bg-white shadow-lg transform transition-transform duration-300 ease-in-out lg:translate-x-0`}
           style={{ top: 0 }}
         >
-          {/* pt-28 on mobile accounts for: 64px navbar + ~48px search/upload row */}
           <div className="h-full overflow-y-auto py-6 pt-28 lg:pt-6">
 
             {/* Quick Links */}
