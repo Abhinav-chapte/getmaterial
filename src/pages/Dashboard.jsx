@@ -7,11 +7,23 @@ import { db } from '../firebase/config';
 import {
   TrendingUp, Clock, Users, Download, FileText, ThumbsUp, Eye,
   Filter, X, Star, ChevronRight, History, Trash2,
-  CheckSquare, Square, ShoppingCart, Loader, CheckCircle
+  CheckSquare, Square, ShoppingCart, Loader, CheckCircle, Sparkles
 } from 'lucide-react';
 import { getRecentlyViewed, clearRecentlyViewed } from '../utils/recentlyViewed';
 
 const SEMESTERS = [1, 2, 3, 4, 5, 6, 7, 8];
+
+// Extract semester number from user's year string
+// e.g. "1st Year" → could be sem 1 or 2, we just show their dept notes
+// But if they have a semester stored directly, use that
+const getSemesterFromYear = (year) => {
+  if (!year || year === 'N/A') return null;
+  if (year === '1st Year') return 1;
+  if (year === '2nd Year') return 3;
+  if (year === '3rd Year') return 5;
+  if (year === '4th Year') return 7;
+  return null;
+};
 
 const Dashboard = () => {
   const { currentUser, userProfile } = useAuth();
@@ -20,15 +32,18 @@ const Dashboard = () => {
   const [stats, setStats] = useState({ totalNotes: 0, activeUsers: 0, departments: 9, downloadsToday: 0 });
   const [recentNotes, setRecentNotes] = useState([]);
   const [filteredNotes, setFilteredNotes] = useState([]);
+  const [personalizedNotes, setPersonalizedNotes] = useState([]);
   const [featuredNotes, setFeaturedNotes] = useState([]);
   const [recentlyViewed, setRecentlyViewed] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filterLoading, setFilterLoading] = useState(false);
+  const [personalizedLoading, setPersonalizedLoading] = useState(true);
   const [selectedSemester, setSelectedSemester] = useState(null);
+  const [showPersonalized, setShowPersonalized] = useState(true);
 
   // ── Download Queue state ──
   const [selectMode, setSelectMode] = useState(false);
-  const [selectedNotes, setSelectedNotes] = useState([]); // array of note objects
+  const [selectedNotes, setSelectedNotes] = useState([]);
   const [downloadingQueue, setDownloadingQueue] = useState(false);
   const [queueProgress, setQueueProgress] = useState({ current: 0, total: 0, currentTitle: '' });
 
@@ -38,12 +53,16 @@ const Dashboard = () => {
     setRecentlyViewed(getRecentlyViewed());
   }, []);
 
+  // Fetch personalized notes once userProfile is loaded
+  useEffect(() => {
+    if (userProfile) fetchPersonalizedNotes();
+  }, [userProfile]);
+
   useEffect(() => {
     if (selectedSemester === null) setFilteredNotes(recentNotes);
     else fetchNotesBySemester(selectedSemester);
   }, [selectedSemester, recentNotes]);
 
-  // Clear selection when leaving select mode
   useEffect(() => {
     if (!selectMode) setSelectedNotes([]);
   }, [selectMode]);
@@ -53,6 +72,68 @@ const Dashboard = () => {
       const snap = await getDoc(doc(db, 'featured', 'notes'));
       if (snap.exists()) setFeaturedNotes(snap.data().notes || []);
     } catch (err) { console.error('Error loading featured notes:', err); }
+  };
+
+  // ── Personalized Feed ─────────────────────────────────────────
+  // Fetches notes matching user's department + their semester
+  const fetchPersonalizedNotes = async () => {
+    if (!userProfile?.department) { setPersonalizedLoading(false); return; }
+    setPersonalizedLoading(true);
+    try {
+      const userDept = userProfile.department;
+      const userSem = getSemesterFromYear(userProfile.year);
+
+      let notes = [];
+      const seen = new Set();
+
+      // Step 1: same dept + same semester (most relevant)
+      if (userSem) {
+        const snapStr = await getDocs(query(
+          collection(db, 'notes'),
+          where('department', '==', userDept),
+          where('semester', '==', String(userSem)),
+          orderBy('createdAt', 'desc'),
+          limit(6)
+        ));
+        const snapNum = await getDocs(query(
+          collection(db, 'notes'),
+          where('department', '==', userDept),
+          where('semester', '==', userSem),
+          orderBy('createdAt', 'desc'),
+          limit(6)
+        ));
+        [...snapStr.docs, ...snapNum.docs].forEach(d => {
+          if (!seen.has(d.id)) { seen.add(d.id); notes.push({ id: d.id, ...d.data() }); }
+        });
+      }
+
+      // Step 2: fill remaining with same dept (any semester)
+      if (notes.length < 6) {
+        const deptSnap = await getDocs(query(
+          collection(db, 'notes'),
+          where('department', '==', userDept),
+          orderBy('createdAt', 'desc'),
+          limit(12)
+        ));
+        deptSnap.docs.forEach(d => {
+          if (!seen.has(d.id) && notes.length < 6) {
+            seen.add(d.id); notes.push({ id: d.id, ...d.data() });
+          }
+        });
+      }
+
+      // Sort by newest
+      notes.sort((a, b) =>
+        (b.createdAt?.toDate?.() || new Date(0)) - (a.createdAt?.toDate?.() || new Date(0))
+      );
+
+      setPersonalizedNotes(notes);
+    } catch (err) {
+      console.error('Error fetching personalized notes:', err);
+      setPersonalizedNotes([]);
+    } finally {
+      setPersonalizedLoading(false);
+    }
   };
 
   const fetchDashboardData = async () => {
@@ -98,16 +179,12 @@ const Dashboard = () => {
     } finally { setFilterLoading(false); }
   };
 
-  // ── Download Queue Logic ─────────────────────────────────────
-
+  // ── Download Queue ────────────────────────────────────────────
   const toggleNoteSelection = (note) => {
     setSelectedNotes(prev => {
       const exists = prev.find(n => n.id === note.id);
       if (exists) return prev.filter(n => n.id !== note.id);
-      if (prev.length >= 10) {
-        alert('Maximum 10 notes at a time');
-        return prev;
-      }
+      if (prev.length >= 10) { alert('Maximum 10 notes at a time'); return prev; }
       return [...prev, note];
     });
   };
@@ -116,18 +193,11 @@ const Dashboard = () => {
 
   const downloadSingleFile = async (note, index) => {
     setQueueProgress({ current: index + 1, total: selectedNotes.length, currentTitle: note.title });
-
     try {
-      // Log download to Firestore
       if (currentUser) {
-        await addDoc(collection(db, 'downloads'), {
-          userId: currentUser.uid,
-          noteId: note.id,
-          downloadedAt: serverTimestamp(),
-        });
+        await addDoc(collection(db, 'downloads'), { userId: currentUser.uid, noteId: note.id, downloadedAt: serverTimestamp() });
         await updateDoc(doc(db, 'notes', note.id), { downloads: increment(1) });
       }
-
       const mimeToExt = {
         'application/pdf': 'pdf',
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
@@ -138,80 +208,43 @@ const Dashboard = () => {
       };
       const ext = mimeToExt[note.fileType] || 'pdf';
       const fileName = `${(note.title || 'file').replace(/[^a-z0-9\s]/gi, '_').replace(/\s+/g, '_')}.${ext}`;
-
-      // Stagger downloads so browser doesn't block multiple at once
       await new Promise(resolve => setTimeout(resolve, index * 1200));
-
-      // Force blob download — prevents browser from opening file viewer
       try {
         const response = await fetch(note.fileURL);
         if (!response.ok) throw new Error('Fetch failed');
         const blob = await response.blob();
         const blobUrl = window.URL.createObjectURL(blob);
         const link = document.createElement('a');
-        link.href = blobUrl;
-        link.download = fileName;
-        link.style.display = 'none';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        // Revoke after short delay to ensure download starts
+        link.href = blobUrl; link.download = fileName; link.style.display = 'none';
+        document.body.appendChild(link); link.click(); document.body.removeChild(link);
         setTimeout(() => window.URL.revokeObjectURL(blobUrl), 3000);
-      } catch (fetchErr) {
-        // Fallback: add fl_attachment to Cloudinary URL to force download
+      } catch {
         const forceDownloadUrl = note.fileURL.includes('cloudinary.com')
-          ? note.fileURL.replace('/upload/', '/upload/fl_attachment/')
-          : note.fileURL;
+          ? note.fileURL.replace('/upload/', '/upload/fl_attachment/') : note.fileURL;
         const link = document.createElement('a');
-        link.href = forceDownloadUrl;
-        link.download = fileName;
-        link.style.display = 'none';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        link.href = forceDownloadUrl; link.download = fileName; link.style.display = 'none';
+        document.body.appendChild(link); link.click(); document.body.removeChild(link);
       }
-
-    } catch (err) {
-      console.error(`Failed to download ${note.title}:`, err);
-    }
+    } catch (err) { console.error(`Failed to download ${note.title}:`, err); }
   };
 
   const handleDownloadQueue = async () => {
     if (!currentUser) { alert('Please login to download'); return; }
     if (selectedNotes.length === 0) return;
-
     setDownloadingQueue(true);
     setQueueProgress({ current: 0, total: selectedNotes.length, currentTitle: '' });
-
     try {
-      // Download files sequentially with staggered timing
-      for (let i = 0; i < selectedNotes.length; i++) {
-        await downloadSingleFile(selectedNotes[i], i);
-      }
+      for (let i = 0; i < selectedNotes.length; i++) await downloadSingleFile(selectedNotes[i], i);
       setQueueProgress({ current: selectedNotes.length, total: selectedNotes.length, currentTitle: 'Done!' });
-
-      // Brief success pause then reset
-      setTimeout(() => {
-        setDownloadingQueue(false);
-        setSelectMode(false);
-        setSelectedNotes([]);
-        setQueueProgress({ current: 0, total: 0, currentTitle: '' });
-      }, 1500);
-
-    } catch (err) {
-      console.error('Queue download error:', err);
-      setDownloadingQueue(false);
-    }
+      setTimeout(() => { setDownloadingQueue(false); setSelectMode(false); setSelectedNotes([]); setQueueProgress({ current: 0, total: 0, currentTitle: '' }); }, 1500);
+    } catch (err) { console.error('Queue download error:', err); setDownloadingQueue(false); }
   };
-
-  // ─────────────────────────────────────────────────────────────
 
   const handleClearHistory = () => { clearRecentlyViewed(); setRecentlyViewed([]); };
   const handleSemesterClick = (sem) => setSelectedSemester(prev => prev === sem ? null : sem);
   const clearFilter = () => setSelectedSemester(null);
 
-  // ── Sub-components ───────────────────────────────────────────
-
+  // ── Sub-components ────────────────────────────────────────────
   const StatCard = ({ icon: Icon, label, value, color }) => (
     <div className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow">
       <div className="flex items-center justify-between">
@@ -226,7 +259,6 @@ const Dashboard = () => {
     </div>
   );
 
-  // Note card — supports select mode
   const NoteCard = ({ note }) => {
     const selected = isSelected(note.id);
     return (
@@ -236,39 +268,26 @@ const Dashboard = () => {
           selectMode && selected ? 'ring-2 ring-purple-500 bg-purple-50' : ''
         } ${selectMode ? 'hover:ring-2 hover:ring-purple-300' : ''}`}
       >
-        {/* Checkbox overlay in select mode */}
         {selectMode && (
           <div className="absolute top-3 right-3 z-10">
-            {selected
-              ? <CheckSquare className="w-6 h-6 text-purple-600 fill-purple-100" />
-              : <Square className="w-6 h-6 text-gray-300" />
-            }
+            {selected ? <CheckSquare className="w-6 h-6 text-purple-600 fill-purple-100" /> : <Square className="w-6 h-6 text-gray-300" />}
           </div>
         )}
-
         <div className="flex items-start gap-3 mb-3">
-          <div className={`p-3 rounded-lg flex-shrink-0 transition-all ${
-            selectMode && selected
-              ? 'bg-gradient-to-br from-purple-500 to-purple-700'
-              : 'bg-gradient-to-br from-purple-500 to-blue-500'
-          }`}>
+          <div className={`p-3 rounded-lg flex-shrink-0 transition-all ${selectMode && selected ? 'bg-gradient-to-br from-purple-500 to-purple-700' : 'bg-gradient-to-br from-purple-500 to-blue-500'}`}>
             <FileText className="w-6 h-6 text-white" />
           </div>
           <div className="flex-1 min-w-0 pr-6">
-            <h3 className={`font-semibold transition-colors truncate ${
-              selectMode && selected ? 'text-purple-700' : 'text-gray-800 group-hover:text-purple-600'
-            }`}>
+            <h3 className={`font-semibold transition-colors truncate ${selectMode && selected ? 'text-purple-700' : 'text-gray-800 group-hover:text-purple-600'}`}>
               {note.title || 'Untitled Note'}
             </h3>
             <p className="text-sm text-gray-600 truncate">{note.subject || 'General'}</p>
           </div>
         </div>
-
         <div className="flex items-center gap-2 mb-3 flex-wrap">
           <span className="px-3 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded-full">{note.department || 'N/A'}</span>
           <span className="px-3 py-1 bg-purple-100 text-purple-700 text-xs font-medium rounded-full">Sem {note.semester || 'N/A'}</span>
         </div>
-
         <div className="flex items-center justify-between text-sm text-gray-500">
           <div className="flex items-center gap-4">
             <span className="flex items-center gap-1"><ThumbsUp className="w-4 h-4" />{note.upvotes || 0}</span>
@@ -288,9 +307,7 @@ const Dashboard = () => {
         <div className="bg-gradient-to-br from-purple-400 to-blue-400 p-2 rounded-lg flex-shrink-0">
           <FileText className="w-4 h-4 text-white" />
         </div>
-        <p className="font-semibold text-gray-800 text-sm truncate group-hover:text-purple-600 transition-colors">
-          {note.title}
-        </p>
+        <p className="font-semibold text-gray-800 text-sm truncate group-hover:text-purple-600 transition-colors">{note.title}</p>
       </div>
       <p className="text-xs text-gray-500 truncate mb-2">{note.subject}</p>
       <div className="flex items-center gap-1.5">
@@ -336,10 +353,8 @@ const Dashboard = () => {
     </div>
   );
 
-  // ─────────────────────────────────────────────────────────────
-
-  // Notes to show in the main grid (trending or filtered)
   const displayNotes = selectedSemester !== null ? filteredNotes : recentNotes;
+  const userSem = getSemesterFromYear(userProfile?.year);
 
   return (
     <Layout>
@@ -358,6 +373,68 @@ const Dashboard = () => {
           <StatCard icon={TrendingUp} label="Departments" value={stats.departments} color="bg-purple-500" />
           <StatCard icon={Download} label="Downloads Today" value={stats.downloadsToday} color="bg-orange-500" />
         </div>
+
+        {/* ── PERSONALIZED FEED ── */}
+        {userProfile?.department && (
+          <div className="mb-8">
+            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-6 h-6 text-purple-500" />
+                <h2 className="text-2xl font-bold text-gray-800">For You</h2>
+                <span className="px-2.5 py-0.5 bg-purple-100 text-purple-700 text-xs font-bold rounded-full">
+                  {userProfile.department} {userSem ? `• Sem ${userSem}` : ''}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowPersonalized(p => !p)}
+                  className="text-sm text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  {showPersonalized ? 'Hide' : 'Show'}
+                </button>
+                <button
+                  onClick={() => navigate(`/dashboard/department/${encodeURIComponent(userProfile.department)}`)}
+                  className="text-purple-600 hover:text-purple-700 font-medium flex items-center gap-1 text-sm transition-colors"
+                >
+                  View All {userProfile.department} →
+                </button>
+              </div>
+            </div>
+
+            {showPersonalized && (
+              personalizedLoading ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {[1,2,3].map(i => (
+                    <div key={i} className="bg-white rounded-lg shadow-md p-5 animate-pulse">
+                      <div className="flex gap-3 mb-3">
+                        <div className="w-12 h-12 bg-gray-200 rounded-lg" />
+                        <div className="flex-1">
+                          <div className="h-4 bg-gray-200 rounded mb-2 w-3/4" />
+                          <div className="h-3 bg-gray-200 rounded w-1/2" />
+                        </div>
+                      </div>
+                      <div className="h-3 bg-gray-200 rounded w-full mb-2" />
+                      <div className="h-3 bg-gray-200 rounded w-2/3" />
+                    </div>
+                  ))}
+                </div>
+              ) : personalizedNotes.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {personalizedNotes.map(note => <NoteCard key={note.id} note={note} />)}
+                </div>
+              ) : (
+                <div className="bg-gradient-to-r from-purple-50 to-teal-50 rounded-xl border-2 border-dashed border-purple-200 p-8 text-center">
+                  <Sparkles className="w-12 h-12 text-purple-300 mx-auto mb-3" />
+                  <p className="text-gray-600 font-medium">No notes for {userProfile.department} yet</p>
+                  <p className="text-gray-400 text-sm mt-1">Be the first to upload for your department!</p>
+                  <button onClick={() => navigate('/dashboard/upload')}
+                    className="mt-4 bg-gradient-to-r from-purple-600 to-teal-500 text-white px-5 py-2 rounded-lg font-semibold text-sm hover:shadow-lg"
+                  >Upload Now</button>
+                </div>
+              )
+            )}
+          </div>
+        )}
 
         {/* Recently Viewed */}
         {recentlyViewed.length > 0 && (
@@ -409,8 +486,16 @@ const Dashboard = () => {
             >All</button>
             {SEMESTERS.map(sem => (
               <button key={sem} onClick={() => handleSemesterClick(sem)}
-                className={`px-4 py-2 rounded-full text-sm font-semibold transition-all ${selectedSemester === sem ? 'bg-gradient-to-r from-purple-600 to-teal-500 text-white shadow-md scale-105' : 'bg-gray-100 text-gray-600 hover:bg-purple-50 hover:text-purple-700'}`}
-              >Sem {sem}</button>
+                className={`px-4 py-2 rounded-full text-sm font-semibold transition-all ${
+                  selectedSemester === sem
+                    ? 'bg-gradient-to-r from-purple-600 to-teal-500 text-white shadow-md scale-105'
+                    : sem === userSem
+                      ? 'bg-purple-50 text-purple-700 border-2 border-purple-300 hover:bg-purple-100'
+                      : 'bg-gray-100 text-gray-600 hover:bg-purple-50 hover:text-purple-700'
+                }`}
+              >
+                Sem {sem}{sem === userSem ? ' ★' : ''}
+              </button>
             ))}
           </div>
           {selectedSemester && (
@@ -421,30 +506,22 @@ const Dashboard = () => {
           )}
         </div>
 
-        {/* ── NOTES SECTION with Download Queue toolbar ── */}
+        {/* Notes Section */}
         <div className="mb-8">
           <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
             <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-              {selectedSemester !== null
-                ? `📖 Semester ${selectedSemester} Notes`
-                : '🔥 Trending This Week'
-              }
+              {selectedSemester !== null ? `📖 Semester ${selectedSemester} Notes` : '🔥 Trending This Week'}
             </h2>
-
             <div className="flex items-center gap-2">
-              {/* Select Mode Toggle */}
               <button
                 onClick={() => setSelectMode(prev => !prev)}
                 className={`flex items-center gap-2 px-4 py-2 rounded-xl font-semibold text-sm transition-all ${
-                  selectMode
-                    ? 'bg-purple-600 text-white shadow-md'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  selectMode ? 'bg-purple-600 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
               >
                 {selectMode ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
                 {selectMode ? 'Cancel' : 'Select'}
               </button>
-
               {!selectMode && selectedSemester === null && (
                 <button onClick={() => navigate('/dashboard/upvoted')}
                   className="text-purple-600 hover:text-purple-700 font-medium flex items-center gap-1 transition-colors text-sm"
@@ -453,55 +530,33 @@ const Dashboard = () => {
             </div>
           </div>
 
-          {/* ── DOWNLOAD QUEUE BAR ── */}
+          {/* Download Queue Bar */}
           {selectMode && (
-            <div className={`mb-4 p-4 rounded-2xl border-2 transition-all ${
-              selectedNotes.length > 0
-                ? 'bg-purple-50 border-purple-300'
-                : 'bg-gray-50 border-gray-200'
-            }`}>
+            <div className={`mb-4 p-4 rounded-2xl border-2 transition-all ${selectedNotes.length > 0 ? 'bg-purple-50 border-purple-300' : 'bg-gray-50 border-gray-200'}`}>
               <div className="flex items-center justify-between flex-wrap gap-3">
                 <div className="flex items-center gap-3">
                   <ShoppingCart className={`w-5 h-5 ${selectedNotes.length > 0 ? 'text-purple-600' : 'text-gray-400'}`} />
                   <div>
                     <p className={`font-semibold ${selectedNotes.length > 0 ? 'text-purple-700' : 'text-gray-500'}`}>
-                      {selectedNotes.length === 0
-                        ? 'Tap notes below to select them'
-                        : `${selectedNotes.length} note${selectedNotes.length > 1 ? 's' : ''} selected`
-                      }
+                      {selectedNotes.length === 0 ? 'Tap notes below to select them' : `${selectedNotes.length} note${selectedNotes.length > 1 ? 's' : ''} selected`}
                     </p>
                     {selectedNotes.length > 0 && (
-                      <p className="text-xs text-purple-500 mt-0.5 truncate max-w-xs">
-                        {selectedNotes.map(n => n.title).join(', ')}
-                      </p>
+                      <p className="text-xs text-purple-500 mt-0.5 truncate max-w-xs">{selectedNotes.map(n => n.title).join(', ')}</p>
                     )}
                   </div>
                 </div>
-
                 <div className="flex items-center gap-2">
                   {selectedNotes.length > 0 && (
-                    <button onClick={() => setSelectedNotes([])}
-                      className="px-3 py-2 text-sm text-gray-500 hover:text-red-500 font-medium transition-colors"
-                    >Clear</button>
+                    <button onClick={() => setSelectedNotes([])} className="px-3 py-2 text-sm text-gray-500 hover:text-red-500 font-medium transition-colors">Clear</button>
                   )}
-                  <button
-                    onClick={handleDownloadQueue}
-                    disabled={selectedNotes.length === 0 || downloadingQueue}
+                  <button onClick={handleDownloadQueue} disabled={selectedNotes.length === 0 || downloadingQueue}
                     className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-purple-600 to-teal-500 text-white rounded-xl font-semibold text-sm hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {downloadingQueue
-                      ? <Loader className="w-4 h-4 animate-spin" />
-                      : <Download className="w-4 h-4" />
-                    }
-                    {downloadingQueue
-                      ? `Downloading ${queueProgress.current}/${queueProgress.total}...`
-                      : `Download${selectedNotes.length > 1 ? ` All (${selectedNotes.length})` : ''}`
-                    }
+                    {downloadingQueue ? <Loader className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                    {downloadingQueue ? `Downloading ${queueProgress.current}/${queueProgress.total}...` : `Download${selectedNotes.length > 1 ? ` All (${selectedNotes.length})` : ''}`}
                   </button>
                 </div>
               </div>
-
-              {/* Progress bar while downloading */}
               {downloadingQueue && (
                 <div className="mt-3">
                   <div className="flex items-center justify-between text-xs text-purple-600 mb-1">
@@ -509,10 +564,8 @@ const Dashboard = () => {
                     <span>{queueProgress.current}/{queueProgress.total}</span>
                   </div>
                   <div className="w-full bg-purple-100 rounded-full h-2">
-                    <div
-                      className="bg-gradient-to-r from-purple-600 to-teal-500 h-2 rounded-full transition-all duration-500"
-                      style={{ width: `${queueProgress.total > 0 ? (queueProgress.current / queueProgress.total) * 100 : 0}%` }}
-                    />
+                    <div className="bg-gradient-to-r from-purple-600 to-teal-500 h-2 rounded-full transition-all duration-500"
+                      style={{ width: `${queueProgress.total > 0 ? (queueProgress.current / queueProgress.total) * 100 : 0}%` }} />
                   </div>
                   {queueProgress.current === queueProgress.total && queueProgress.total > 0 && (
                     <p className="text-center text-green-600 font-semibold text-sm mt-2 flex items-center justify-center gap-1">
@@ -524,13 +577,7 @@ const Dashboard = () => {
             </div>
           )}
 
-          {/* Notes Grid */}
-          {(filterLoading) ? (
-            <div className="text-center py-12">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto"></div>
-              <p className="text-gray-600 mt-4">Loading notes...</p>
-            </div>
-          ) : loading && selectedSemester === null ? (
+          {filterLoading || (loading && selectedSemester === null) ? (
             <div className="text-center py-12">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto"></div>
               <p className="text-gray-600 mt-4">Loading notes...</p>
@@ -553,7 +600,7 @@ const Dashboard = () => {
           )}
         </div>
 
-        {/* Recently Uploaded (only when no semester filter) */}
+        {/* Recently Uploaded */}
         {selectedSemester === null && (
           <div>
             <div className="flex items-center justify-between mb-4">
